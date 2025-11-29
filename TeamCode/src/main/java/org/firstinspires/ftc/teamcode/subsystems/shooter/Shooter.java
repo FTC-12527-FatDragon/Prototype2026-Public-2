@@ -8,13 +8,13 @@ import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.arcrobotics.ftclib.command.SubsystemBase;
 import com.arcrobotics.ftclib.controller.PIDController;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.utils.Util;
 
 public class Shooter extends SubsystemBase {
-    public final DcMotorEx leftShooter;
     public final DcMotorEx rightShooter;
     public final Servo shooterServo;
     public final TelemetryPacket packet = new TelemetryPacket();
@@ -23,9 +23,9 @@ public class Shooter extends SubsystemBase {
     public ShooterState shooterState = ShooterState.STOP;
 
     public Shooter(final HardwareMap hardwareMap) {
-        leftShooter = hardwareMap.get(DcMotorEx.class, ShooterConstants.leftShooterName);
         rightShooter = hardwareMap.get(DcMotorEx.class, ShooterConstants.rightShooterName);
         shooterServo = hardwareMap.get(Servo.class, ShooterConstants.shooterServoName);
+        rightShooter.setDirection(DcMotorSimple.Direction.REVERSE);
         pidController = new PIDController(ShooterConstants.kP,
                 ShooterConstants.kI, ShooterConstants.kD);
     }
@@ -62,12 +62,10 @@ public class Shooter extends SubsystemBase {
         if (shooterState != ShooterState.STOP) {
             double currentPower = pidController.calculate(
                     rightShooter.getVelocity(), shooterState.shooterVelocity);
-            leftShooter.setPower(-currentPower);
             rightShooter.setPower(currentPower);
             packet.put("currentPower", currentPower);
         }
         else {
-            leftShooter.setPower(-ShooterState.STOP.shooterVelocity);
             rightShooter.setPower(ShooterState.STOP.shooterVelocity);
         }
 
@@ -80,7 +78,6 @@ public class Shooter extends SubsystemBase {
             readyToShoot = false;
         }
 
-        packet.put("leftShooterVelocity", leftShooter.getVelocity());
         packet.put("rightShooterVelocity", rightShooter.getVelocity());
         FtcDashboard.getInstance().sendTelemetryPacket(packet);
     }

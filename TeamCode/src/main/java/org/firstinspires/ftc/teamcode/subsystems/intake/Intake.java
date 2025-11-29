@@ -14,7 +14,7 @@ public class Intake extends SubsystemBase {
     public Intake(HardwareMap hardwareMap) {
         intakeMotor = hardwareMap.get(DcMotor.class, IntakeConstants.intakeMotorName);
 
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        intakeMotor.setDirection(DcMotorSimple.Direction.FORWARD);
     }
 
     public void toggle() {

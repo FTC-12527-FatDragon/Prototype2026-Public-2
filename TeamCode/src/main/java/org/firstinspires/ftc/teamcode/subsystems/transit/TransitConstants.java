@@ -6,6 +6,6 @@ import com.acmerobotics.dashboard.config.Config;
 public class TransitConstants {
     public static String transitServoName = "transitServo";
 
-    public static double transitUpPos = 0.0;
-    public static double transitDownPos = 0.0;
+    public static double transitUpPos = 0.95;
+    public static double transitDownPos = 0.75;
 }
