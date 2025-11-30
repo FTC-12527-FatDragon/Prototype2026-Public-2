@@ -160,9 +160,9 @@ public class MecanumDriveOTOS extends SubsystemBase {
 
     @Override
     public void periodic() {
-        if (!isGamepadOn) {
-            applyBreak();
-        }
+//        if (!isGamepadOn) {
+//            applyBreak();
+//        }
 
         lastPose = getPose();
     }

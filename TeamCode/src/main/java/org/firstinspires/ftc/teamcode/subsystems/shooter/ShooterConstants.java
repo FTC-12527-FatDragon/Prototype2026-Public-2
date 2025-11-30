@@ -23,6 +23,6 @@ public class ShooterConstants {
     public static double slowVelocity = 1300;
     public static double releaseVelocity = 1000;
 
-    public static double shooterServoUpPos = 0.0;
+    public static double shooterServoUpPos = 0.59;
     public static double shooterServoDownPos = 0.0;
 }
