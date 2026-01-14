@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-01-08
+> FTC Team 12527 | Last Updated: 2026-01-13
 
 ---
 
@@ -112,20 +112,45 @@ Each subsystem extends `SubsystemBase` (FTCLib) and implements a `periodic()` me
 
 #### Auto-Aim Algorithm | 自瞄算法
 
+The auto-aim system uses a **PID controller** with several enhancements to prevent oscillation:
+
+自瞄系统使用 **PID 控制器**，并加入多项优化以防止抖动：
+
+**1. Low-Pass Filter | 低通滤波**
 ```java
-// P control with distance-based deadband
-// P控制 + 基于距离的死区
-
-double tx = vision.getTx();  // Horizontal offset from target | 目标水平偏移
-double error = tx - targetTx;
-
-// Deadband: Near (4°) vs Far (0.5°)
-// 死区：近距离(4°) vs 远距离(0.5°)
-if (error < currentDeadband) return 0;
-
-double turn = -kP_alignH * error;  // kP = 0.025
-return clamp(turn, -1, 1);
+// Smooth Limelight noise (especially at close range)
+// 平滑 Limelight 噪声（近距离尤其明显）
+filteredTx = alpha * rawTx + (1 - alpha) * filteredTx;  // alpha = 0.3
 ```
+
+**2. Hysteresis Deadband | 滞后死区**
+```java
+// Entry threshold: 3.0° (near) or 0.5° (far)
+// Exit threshold: entry + 1.5° (hysteresis)
+// Prevents oscillation at deadband boundary
+// 进入死区阈值：3.0°(近) 或 0.5°(远)
+// 退出死区阈值：进入 + 1.5°（滞后）
+// 防止在死区边界抖动
+```
+
+**3. Distance-Adaptive PID | 距离自适应 PID**
+```java
+// Close (<40"): kP = 0.012 (weak, prevent overshoot)
+// Far (>100"):  kP = 0.03  (strong, precision)
+// Mid: linear interpolation
+// 近距离(<40")：kP = 0.012（弱，防过冲）
+// 远距离(>100")：kP = 0.03（强，精准）
+// 中间距离：线性插值
+```
+
+**4. PID Parameters | PID 参数**
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `kP_near` | 0.012 | P gain at close range |
+| `kP_far` | 0.03 | P gain at far range |
+| `kD_alignH` | 0.008 | D gain (damping) |
+| `txFilterAlpha` | 0.3 | Filter coefficient (lower = smoother) |
+| `alignHysteresis` | 1.5° | Hysteresis amount |
 
 #### Absolute Position Fusion | 绝对位置融合
 
@@ -774,17 +799,23 @@ All `@Config` annotated classes can be tuned in real-time:
 
 | Problem | Possible Cause | Solution | File & Method |
 |---------|----------------|----------|---------------|
-| **Auto-aim jitters | 自瞄抖动** | PID too aggressive | Reduce `kP_alignH` | `MecanumDrivePinpoint.java` → `kP_alignH` |
-| **Auto-aim too slow | 自瞄太慢** | kP too low | Increase `kP_alignH` | `MecanumDrivePinpoint.java` → `kP_alignH` |
-| **Doesn't stop when aligned | 对准后不停** | Deadband too small | Increase `alignDeadbandNear/Far` | `MecanumDrivePinpoint.java` → deadband |
+| **Jitters at close range | 近距离抖动** | kP too high for close | Reduce `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
+| **Jitters at all distances | 各距离都抖** | tx noise | Reduce `txFilterAlpha` (0.2~0.15) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
+| **Oscillates at deadband | 死区边界振荡** | Hysteresis too small | Increase `alignHysteresis` | `MecanumDrivePinpoint.java` → `alignHysteresis` |
+| **Auto-aim too slow (near) | 近距离太慢** | kP too low | Increase `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
+| **Auto-aim too slow (far) | 远距离太慢** | kP too low | Increase `kP_far` | `MecanumDrivePinpoint.java` → `kP_far` |
+| **Response too sluggish | 响应迟钝** | Filter too strong | Increase `txFilterAlpha` (0.4~0.5) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
 | **Far shot offset wrong | 远射偏移错误** | Offset calibration | Adjust `farOffsetDegrees` | `MecanumDrivePinpoint.java` → `farOffsetDegrees` |
 | **Offset triggers too early | 偏移触发太早** | Distance threshold | Adjust `farDistanceThreshold` | `MecanumDrivePinpoint.java` → `farDistanceThreshold` |
 
 | 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
 |------|----------|----------|-------------|
-| **自瞄抖动** | PID太激进 | 减少 `kP_alignH` | `MecanumDrivePinpoint.java` → `kP_alignH` |
-| **自瞄太慢** | kP太低 | 增加 `kP_alignH` | `MecanumDrivePinpoint.java` → `kP_alignH` |
-| **对准后不停** | 死区太小 | 增加死区 | `MecanumDrivePinpoint.java` → 死区常量 |
+| **近距离抖动** | 近距离kP太高 | 减少 `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
+| **各距离都抖** | tx噪声 | 减少 `txFilterAlpha` (0.2~0.15) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
+| **死区边界振荡** | 滞后太小 | 增加 `alignHysteresis` | `MecanumDrivePinpoint.java` → `alignHysteresis` |
+| **近距离太慢** | kP太低 | 增加 `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
+| **远距离太慢** | kP太低 | 增加 `kP_far` | `MecanumDrivePinpoint.java` → `kP_far` |
+| **响应迟钝** | 滤波太强 | 增加 `txFilterAlpha` (0.4~0.5) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
 | **远射偏移错误** | 偏移校准 | 调整 `farOffsetDegrees` | `MecanumDrivePinpoint.java` → `farOffsetDegrees` |
 | **偏移触发太早** | 距离阈值 | 调整 `farDistanceThreshold` | `MecanumDrivePinpoint.java` → `farDistanceThreshold` |
 

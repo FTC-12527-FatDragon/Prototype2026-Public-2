@@ -60,18 +60,32 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     private final PIDController alignPID;
     
     // Auto-aim PID constants (tunable via Dashboard)
-    public static double kP_alignH = 0.025;      // P gain for auto-aim
+    // Distance-adaptive: actual kP = kP_alignH * (1 - distanceFactor * kP_distanceScale)
+    public static double kP_alignH = 0.025;      // Base P gain for auto-aim
     public static double kI_alignH = 0;          // I gain for auto-aim
-    public static double kD_alignH = 0.005;      // D gain for auto-aim (increased for damping)
-    public static double alignDeadbandNear = 4.0;  // Deadband for close shots (degrees)
-    public static double alignDeadbandFar = 0.5;  // Deadband for far shots (degrees)
+    public static double kD_alignH = 0.008;      // D gain for auto-aim (damping)
+    public static double kP_near = 0.012;        // P gain at close range (weaker to prevent overshoot)
+    public static double kP_far = 0.03;          // P gain at far range (stronger for precision)
+    
+    // Deadband with hysteresis to prevent oscillation at boundary
+    public static double alignDeadbandNear = 3.0;      // Entry deadband for close shots (degrees)
+    public static double alignDeadbandFar = 0.5;       // Entry deadband for far shots (degrees)
+    public static double alignHysteresis = 1.5;        // Exit deadband = entry + hysteresis
     
     // Auto-aim offset constants
-    public static double farDistanceThreshold = 94;  // Distance threshold for offset (inches)
-    public static double farOffsetDegrees = 2.0;        // Offset in degrees for far shots
+    public static double farDistanceThreshold = 94;    // Distance threshold for offset (inches)
+    public static double farOffsetDegrees = 2.0;       // Offset in degrees for far shots
+    
+    // Low-pass filter for tx smoothing (reduces jitter from Limelight noise)
+    public static double txFilterAlpha = 0.3;          // Filter coefficient (0-1, lower = smoother)
+    private double filteredTx = 0;
+    private boolean txFilterInitialized = false;
     
     // Current deadband (set based on distance)
     private double currentDeadband = alignDeadbandNear;
+    
+    // Hysteresis state: true = inside deadband (aligned), false = outside (aligning)
+    private boolean isAligned = false;
     
     // Cached offset to prevent jitter (Mode 1: tx-based)
     private double currentOffset = 0;
@@ -400,11 +414,11 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     /**
      * Gets the turn power for auto-aim.
      * 
-     * Mode 1: If seeing goal tag (20/24), use Limelight's tx value for precise alignment.
-     * Mode 2: If NOT seeing goal tag but has absolute position, calculate heading to nearest goal
-     *         and turn towards it (robot back facing goal).
-     * 
-     * Includes distance-based offset compensation for Mode 1.
+     * Features:
+     * - Low-pass filter on tx to reduce Limelight noise
+     * - Hysteresis deadband to prevent oscillation at boundary
+     * - Distance-adaptive PID (weaker at close range, stronger at far range)
+     * - Distance-based offset compensation for far shots
      * 
      * @param vision The Vision subsystem.
      * @return Turn power (-1 to 1). Positive = turn right, Negative = turn left.
@@ -413,58 +427,96 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         int tagId = vision.getDetectedTagId();
         boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
         
-        // Update PID coefficients in case they were changed via Dashboard
-        alignPID.setPID(kP_alignH, kI_alignH, kD_alignH);
-        
         if (isGoalTag) {
             // ==================== MODE 1: TX-BASED ALIGNMENT ====================
             // Record which tag we're aligning to
             lastAlignedTagId = tagId;
             hasLastAlignedTag = true;
             
-            // Get tx value (horizontal offset in degrees)
-            double tx = vision.getTx();
+            // Get raw tx value (horizontal offset in degrees)
+            double rawTx = vision.getTx();
             
-            // Distance-based offset and deadband compensation
-            // Lock the offset once determined to prevent jitter
+            // ========== LOW-PASS FILTER ==========
+            // Smooths out Limelight noise, especially noticeable at close range
+            if (!txFilterInitialized) {
+                filteredTx = rawTx;
+                txFilterInitialized = true;
+            } else {
+                // filteredTx = alpha * rawTx + (1-alpha) * filteredTx
+                filteredTx = txFilterAlpha * rawTx + (1 - txFilterAlpha) * filteredTx;
+            }
+            double tx = filteredTx;
+            
+            // ========== DISTANCE-BASED PARAMETERS ==========
+            // Lock offset and deadband once determined
+            double distance = vision.getDistanceToTag();
+            
             if (!offsetLocked) {
-                double distance = vision.getDistanceToTag();
-                
                 if (distance > 0 && distance > farDistanceThreshold) {
                     // Far shot: apply offset and use smaller deadband
-                    if (tagId == Vision.BLUE_GOAL_TAG_ID) {
-                        currentOffset = -farOffsetDegrees;  // Blue goal: offset left
-                    } else {
-                        currentOffset = farOffsetDegrees;   // Red goal: offset right
-                    }
-                    currentDeadband = alignDeadbandFar;  // Far shot: tight deadband (0.5°)
+                    currentOffset = (tagId == Vision.BLUE_GOAL_TAG_ID) ? -farOffsetDegrees : farOffsetDegrees;
+                    currentDeadband = alignDeadbandFar;
                 } else {
-                    currentOffset = 0;  // Close shot: no offset
-                    currentDeadband = alignDeadbandNear;  // Close shot: loose deadband (4°)
+                    // Close shot: no offset, larger deadband
+                    currentOffset = 0;
+                    currentDeadband = alignDeadbandNear;
                 }
-                offsetLocked = true;  // Lock to prevent jitter
+                offsetLocked = true;
             }
             
-            // Calculate error
+            // ========== DISTANCE-ADAPTIVE PID ==========
+            // Interpolate kP between near and far values based on distance
+            double effectiveKp;
+            if (distance <= 0) {
+                effectiveKp = kP_alignH;  // Fallback
+            } else if (distance < 40) {
+                effectiveKp = kP_near;  // Close range: weak P to prevent overshoot
+            } else if (distance > 100) {
+                effectiveKp = kP_far;   // Far range: strong P for precision
+            } else {
+                // Linear interpolation between 40" and 100"
+                double ratio = (distance - 40) / 60.0;
+                effectiveKp = kP_near + (kP_far - kP_near) * ratio;
+            }
+            alignPID.setPID(effectiveKp, kI_alignH, kD_alignH);
+            
+            // ========== HYSTERESIS DEADBAND ==========
+            // Entry threshold: currentDeadband
+            // Exit threshold: currentDeadband + hysteresis
+            // This prevents oscillation at the deadband boundary
             double targetTx = -currentOffset;
             double error = Math.abs(tx - targetTx);
             
-            // Apply deadband - if error is small enough, stop adjusting
-            // Uses distance-based deadband: far=0.5°, near=4°
-            if (error < currentDeadband) {
-                alignPID.reset();  // Reset PID to prevent integral windup
-                return 0;
+            double entryThreshold = currentDeadband;
+            double exitThreshold = currentDeadband + alignHysteresis;
+            
+            if (isAligned) {
+                // Currently aligned: stay aligned until error exceeds exit threshold
+                if (error > exitThreshold) {
+                    isAligned = false;  // Exit aligned state, start correcting
+                } else {
+                    // Still aligned, but DON'T reset PID (keep D term history)
+                    return 0;
+                }
+            } else {
+                // Currently aligning: become aligned when error drops below entry threshold
+                if (error < entryThreshold) {
+                    isAligned = true;  // Enter aligned state
+                    return 0;
+                }
             }
             
-            // PID control to align tx to target offset
+            // ========== PID CONTROL ==========
             double turn = -alignPID.calculate(tx, targetTx);
             return Math.max(-1, Math.min(1, turn));
             
         } else {
-            // No goal tag visible, reset and return 0
+            // No goal tag visible, reset state
             offsetLocked = false;
             currentOffset = 0;
             headingTargetLocked = false;
+            isAligned = false;
+            txFilterInitialized = false;
             alignPID.reset();
             return 0;
         }
@@ -487,13 +539,20 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     }
     
     /**
-     * Resets the auto-aim offset lock, heading target lock, and PID.
+     * Resets the auto-aim offset lock, heading target lock, filter, and PID.
      * Call this when releasing the aim button.
      */
     public void resetAutoAimOffset() {
         // Reset tx-based offset lock (Mode 1)
         offsetLocked = false;
         currentOffset = 0;
+        
+        // Reset hysteresis state
+        isAligned = false;
+        
+        // Reset low-pass filter
+        txFilterInitialized = false;
+        filteredTx = 0;
         
         // Reset heading-based target lock (Mode 2)
         headingTargetLocked = false;
