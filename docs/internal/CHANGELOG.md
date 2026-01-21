@@ -4,6 +4,25 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-01-21] - New Subsystems for China Championship
+
+### Added
+- **Climber Subsystem** (`subsystems/climber/`)
+    - `Climber.java`: Controls two servos (left/right) for climbing mechanism
+    - `ClimberConstants.java`: Configuration constants
+    - States: `RETRACTED`, `EXTENDED`
+    - Methods: `extend()`, `retract()`, `toggle()`, `setPositions()`
+    
+- **Turret Subsystem** (`subsystems/turret/`)
+    - `Turret.java`: Controls single motor for turret/gimbal rotation
+    - `TurretConstants.java`: Configuration constants
+    - Methods: `setPower()`, `rotateLeft()`, `rotateRight()`, `stop()`, `getPosition()`
+
+### Changed
+- `Robot.java`: Added `climber` and `turret` subsystem references
+
+---
+
 ## [2026-01-13] - Auto-Aim System Overhaul
 
 ### Changed

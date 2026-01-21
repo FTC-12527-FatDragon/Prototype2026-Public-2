@@ -2,10 +2,12 @@ package org.firstinspires.ftc.teamcode.subsystems;
 
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import org.firstinspires.ftc.teamcode.subsystems.climber.Climber;
 import org.firstinspires.ftc.teamcode.subsystems.drive.MecanumDrivePinpoint;
 import org.firstinspires.ftc.teamcode.subsystems.intake.Intake;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
+import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
 import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 
 /**
@@ -25,6 +27,8 @@ public class Robot {
     public final Transit transit;
     public final Intake intake;
     public final Vision vision;
+    public final Climber climber;
+    public final Turret turret;
 
     /**
      * Constructor for Robot.
@@ -38,6 +42,8 @@ public class Robot {
         transit = new Transit(hardwareMap);
         intake = new Intake(hardwareMap);
         vision = new Vision(hardwareMap);
+        climber = new Climber(hardwareMap);
+        turret = new Turret(hardwareMap);
     }
 }
 

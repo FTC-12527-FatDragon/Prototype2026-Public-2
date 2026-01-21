@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-01-13
+> FTC Team 12527 | Last Updated: 2026-01-21
 
 ---
 
@@ -14,6 +14,8 @@
    - [Intake | 进球机构](#23-intake--进球机构)
    - [Transit | 传输机构](#24-transit--传输机构)
    - [Vision | 视觉](#25-vision--视觉)
+   - [Climber | 爬升机构](#26-climber--爬升机构)
+   - [Turret | 云台](#27-turret--云台)
 3. [Commands | 命令](#3-commands--命令)
 4. [TeleOp Structure | 手动程序结构](#4-teleop-structure--手动程序结构)
 5. [Autonomous Structure | 自动程序结构](#5-autonomous-structure--自动程序结构)
@@ -62,7 +64,9 @@ teamcode/
 │   ├── shooter/          # Shooter flywheel | 发射器
 │   ├── intake/           # Ball intake | 进球
 │   ├── transit/          # Ball feeder | 传输
-│   └── vision/           # Limelight vision | 视觉
+│   ├── vision/           # Limelight vision | 视觉
+│   ├── climber/          # Climbing mechanism | 爬升机构
+│   └── turret/           # Turret/Gimbal | 云台
 ├── commands/             # Action commands | 动作命令
 │   └── autocommands/     # Auto-specific commands | 自动专用命令
 ├── opmodes/              # OpModes | 操作模式
@@ -302,6 +306,77 @@ The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` re
 | `getTy()` | Vertical offset (°) | 垂直偏移（度） |
 | `getRobotPose()` | 3D pose from tag | 从标签获取的3D位姿 |
 | `getDistanceToTag()` | Distance (inches) | 距离（英寸） |
+
+---
+
+### 2.6 Climber | 爬升机构
+
+**File | 文件**: `subsystems/climber/Climber.java`
+
+**Purpose | 用途**: Controls two servos for climbing/hanging mechanism.
+
+控制两个舵机用于爬升/悬挂机构。
+
+#### State Machine | 状态机
+
+```java
+public enum ClimberState {
+    RETRACTED,  // Both servos retracted (resting) | 两个舵机收回（休息状态）
+    EXTENDED    // Both servos extended (climbing) | 两个舵机伸出（爬升状态）
+}
+```
+
+#### Key Methods | 关键方法
+
+| Method | Description | 描述 |
+|--------|-------------|------|
+| `extend()` | Extend both servos | 伸出两个舵机 |
+| `retract()` | Retract both servos | 收回两个舵机 |
+| `toggle()` | Toggle between states | 切换状态 |
+| `setLeftPosition(pos)` | Set left servo position | 设置左舵机位置 |
+| `setRightPosition(pos)` | Set right servo position | 设置右舵机位置 |
+| `setPositions(left, right)` | Set both positions | 同时设置两个位置 |
+
+#### Configuration | 配置
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `leftClimberServoName` | `"leftClimberServo"` | Left servo hardware name |
+| `rightClimberServoName` | `"rightClimberServo"` | Right servo hardware name |
+| `leftRetractedPos` | 0.0 | Left servo retracted position |
+| `leftExtendedPos` | 1.0 | Left servo extended position |
+| `rightRetractedPos` | 0.0 | Right servo retracted position |
+| `rightExtendedPos` | 1.0 | Right servo extended position |
+
+---
+
+### 2.7 Turret | 云台
+
+**File | 文件**: `subsystems/turret/Turret.java`
+
+**Purpose | 用途**: Controls a single motor for turret/gimbal rotation.
+
+控制单个电机用于云台旋转。
+
+#### Key Methods | 关键方法
+
+| Method | Description | 描述 |
+|--------|-------------|------|
+| `setPower(power)` | Set motor power (-1 to 1) | 设置电机功率 |
+| `stop()` | Stop the motor | 停止电机 |
+| `rotateLeft(speed)` | Rotate left | 向左旋转 |
+| `rotateRight(speed)` | Rotate right | 向右旋转 |
+| `getPosition()` | Get encoder position | 获取编码器位置 |
+| `resetEncoder()` | Reset encoder to zero | 重置编码器 |
+
+#### Configuration | 配置
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `turretMotorName` | `"turretMotor"` | Motor hardware name |
+| `maxPower` | 1.0 | Maximum motor power |
+| `minPower` | -1.0 | Minimum motor power |
+| `kP/kI/kD` | 0.01/0/0 | PID constants (reserved) |
 
 ---
 
