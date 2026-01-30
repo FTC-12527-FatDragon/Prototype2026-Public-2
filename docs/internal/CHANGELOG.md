@@ -4,22 +4,30 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-01-30] - Transit Limit Servo & Drive Test OpMode
+
+### Added
+- **Transit Limit Servo**: Added `limitServo` to Transit subsystem
+    - `TransitConstants.java`: Added `limitServoName`, `limitOpenPos`, `limitClosedPos`
+    - `Transit.java`: Limit servo auto-follows transit state (open when UP, closed when DOWN)
+    
+- **Drive Only Test OpMode** (`tests/DriveOnlyTeleOp.java`)
+    - Standalone drivetrain test with only 4 motors + Pinpoint
+    - Field-centric drive with same logic as main TeleOp
+    - Controls: Left stick = move, Right stick = turn, Left stick click = reset heading
+
+---
+
 ## [2026-01-21] - New Subsystems for China Championship
 
 ### Added
-- **Climber Subsystem** (`subsystems/climber/`)
-    - `Climber.java`: Controls two servos (left/right) for climbing mechanism
-    - `ClimberConstants.java`: Configuration constants
-    - States: `RETRACTED`, `EXTENDED`
-    - Methods: `extend()`, `retract()`, `toggle()`, `setPositions()`
-    
 - **Turret Subsystem** (`subsystems/turret/`)
     - `Turret.java`: Controls single motor for turret/gimbal rotation
     - `TurretConstants.java`: Configuration constants
     - Methods: `setPower()`, `rotateLeft()`, `rotateRight()`, `stop()`, `getPosition()`
 
 ### Changed
-- `Robot.java`: Added `climber` and `turret` subsystem references
+- `Robot.java`: Added `turret` subsystem reference
 
 ---
 

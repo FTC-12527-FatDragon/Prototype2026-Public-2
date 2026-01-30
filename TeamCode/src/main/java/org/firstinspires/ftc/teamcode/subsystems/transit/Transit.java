@@ -7,21 +7,24 @@ import com.qualcomm.robotcore.hardware.Servo;
 /**
  * Subsystem handling the Transit (Feeder) mechanism.
  * Controls the servo that pushes rings/elements into the shooter flywheel.
+ * Also controls a limit servo that opens when transit is up, closes when down.
  */
 public class Transit extends SubsystemBase {
     public final Servo transitServo;
+    public final Servo limitServo;
 
     // Default state is DOWN (retracted)
     public TransitState transitState = TransitState.DOWN;
 
     /**
      * Constructor for Transit.
-     * Initializes the transit servo.
+     * Initializes the transit servo and limit servo.
      *
      * @param hardwareMap The hardware map.
      */
     public Transit(HardwareMap hardwareMap) {
         transitServo = hardwareMap.get(Servo.class, TransitConstants.transitServoName);
+        limitServo = hardwareMap.get(Servo.class, TransitConstants.limitServoName);
     }
 
     /**
@@ -48,10 +51,18 @@ public class Transit extends SubsystemBase {
 
     /**
      * Periodic update method.
-     * Updates the servo position to match the current state.
+     * Updates the servo positions to match the current state.
+     * Limit servo automatically opens when transit is UP, closes when DOWN.
      */
     @Override
     public void periodic() {
         transitServo.setPosition(transitState.pos);
+        
+        // Limit servo follows transit state: open when UP, closed when DOWN
+        if (transitState == TransitState.UP) {
+            limitServo.setPosition(TransitConstants.limitOpenPos);
+        } else {
+            limitServo.setPosition(TransitConstants.limitClosedPos);
+        }
     }
 }

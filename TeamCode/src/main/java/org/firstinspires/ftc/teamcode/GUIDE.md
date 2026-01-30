@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-01-21
+> FTC Team 12527 | Last Updated: 2026-01-30
 
 ---
 
@@ -14,8 +14,7 @@
    - [Intake | 进球机构](#23-intake--进球机构)
    - [Transit | 传输机构](#24-transit--传输机构)
    - [Vision | 视觉](#25-vision--视觉)
-   - [Climber | 爬升机构](#26-climber--爬升机构)
-   - [Turret | 云台](#27-turret--云台)
+   - [Turret | 云台](#26-turret--云台)
 3. [Commands | 命令](#3-commands--命令)
 4. [TeleOp Structure | 手动程序结构](#4-teleop-structure--手动程序结构)
 5. [Autonomous Structure | 自动程序结构](#5-autonomous-structure--自动程序结构)
@@ -65,7 +64,6 @@ teamcode/
 │   ├── intake/           # Ball intake | 进球
 │   ├── transit/          # Ball feeder | 传输
 │   ├── vision/           # Limelight vision | 视觉
-│   ├── climber/          # Climbing mechanism | 爬升机构
 │   └── turret/           # Turret/Gimbal | 云台
 ├── commands/             # Action commands | 动作命令
 │   └── autocommands/     # Auto-specific commands | 自动专用命令
@@ -262,9 +260,9 @@ Auto-brake cycle:
 
 **File | 文件**: `subsystems/transit/Transit.java`
 
-**Purpose | 用途**: Servo that pushes balls into the flywheel.
+**Purpose | 用途**: Servo that pushes balls into the flywheel, with a limit servo that auto-follows.
 
-将球推入飞轮的舵机。
+将球推入飞轮的舵机，附带自动跟随的限位舵机。
 
 #### States | 状态
 
@@ -274,6 +272,22 @@ public enum TransitState {
     DOWN(0.67);  // Retracted - loading position | 收回 - 装填位置
 }
 ```
+
+#### Limit Servo | 限位舵机
+
+The `limitServo` automatically follows the transit state:
+- **Transit UP** → Limit servo **OPEN** (`limitOpenPos`)
+- **Transit DOWN** → Limit servo **CLOSED** (`limitClosedPos`)
+
+限位舵机自动跟随传输状态：
+- **传输抬起** → 限位舵机**打开**
+- **传输放下** → 限位舵机**关闭**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `limitServoName` | `"limitServo"` | Hardware name |
+| `limitOpenPos` | 0 | Open position (TODO: calibrate) |
+| `limitClosedPos` | 0 | Closed position (TODO: calibrate) |
 
 The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` returns true.
 
@@ -309,48 +323,7 @@ The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` re
 
 ---
 
-### 2.6 Climber | 爬升机构
-
-**File | 文件**: `subsystems/climber/Climber.java`
-
-**Purpose | 用途**: Controls two servos for climbing/hanging mechanism.
-
-控制两个舵机用于爬升/悬挂机构。
-
-#### State Machine | 状态机
-
-```java
-public enum ClimberState {
-    RETRACTED,  // Both servos retracted (resting) | 两个舵机收回（休息状态）
-    EXTENDED    // Both servos extended (climbing) | 两个舵机伸出（爬升状态）
-}
-```
-
-#### Key Methods | 关键方法
-
-| Method | Description | 描述 |
-|--------|-------------|------|
-| `extend()` | Extend both servos | 伸出两个舵机 |
-| `retract()` | Retract both servos | 收回两个舵机 |
-| `toggle()` | Toggle between states | 切换状态 |
-| `setLeftPosition(pos)` | Set left servo position | 设置左舵机位置 |
-| `setRightPosition(pos)` | Set right servo position | 设置右舵机位置 |
-| `setPositions(left, right)` | Set both positions | 同时设置两个位置 |
-
-#### Configuration | 配置
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `leftClimberServoName` | `"leftClimberServo"` | Left servo hardware name |
-| `rightClimberServoName` | `"rightClimberServo"` | Right servo hardware name |
-| `leftRetractedPos` | 0.0 | Left servo retracted position |
-| `leftExtendedPos` | 1.0 | Left servo extended position |
-| `rightRetractedPos` | 0.0 | Right servo retracted position |
-| `rightExtendedPos` | 1.0 | Right servo extended position |
-
----
-
-### 2.7 Turret | 云台
+### 2.6 Turret | 云台
 
 **File | 文件**: `subsystems/turret/Turret.java`
 
@@ -619,6 +592,24 @@ All `@Config` annotated classes can be tuned in real-time:
 1. 连接 `http://192.168.43.1:8080/dash`
 2. 在 "Configuration" 下找到类
 3. 实时修改参数
+
+### Test OpModes | 测试程序
+
+| OpMode | Purpose | 用途 |
+|--------|---------|------|
+| `Drive Only Test` | Drivetrain-only test (4 motors + Pinpoint) | 仅底盘测试 |
+| `Tuning` | Comprehensive tuning for all subsystems | 全子系统综合调参 |
+
+#### Drive Only Test
+
+Standalone drivetrain test with field-centric drive. Same logic as main TeleOp but without other subsystems.
+
+独立底盘测试，场地相对驾驶。与主 TeleOp 逻辑相同但不包含其他子系统。
+
+**Controls | 操作**:
+- Left Stick: Move (field-centric) | 移动（场地相对）
+- Right Stick: Turn | 旋转
+- Left Stick Click: Reset heading | 重置朝向
 
 ---
 
