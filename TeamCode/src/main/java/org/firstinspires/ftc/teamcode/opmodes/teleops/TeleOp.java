@@ -66,14 +66,16 @@ public class TeleOp extends CommandOpMode {
         DriverControls.bind(gamepadEx1, robot, isAuto);
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
         
-        // Initialize turret to Soft Lock (0° forward)
-        robot.turret.enableSoftLock();
+        // TURRET DISABLED
+        // robot.turret.enableSoftLock();
     }
 
     @Override
     public void run() {
         CommandScheduler.getInstance().run();
         
+        // TURRET DISABLED
+        /*
         // --- Update Turret with Robot Position (for Hard Lock) ---
         if (robot.drive.hasAbsolutePosition()) {
             robot.turret.updateRobotPosition(
@@ -82,6 +84,7 @@ public class TeleOp extends CommandOpMode {
                     robot.drive.getAbsoluteHeading()
             );
         }
+        */
         
         // --- Odometry Pose Telemetry ---
         Pose2D pose = robot.drive.getPose();
@@ -159,6 +162,8 @@ public class TeleOp extends CommandOpMode {
             telemetry.addData("CAN FIRE", canFire ? "YES (|tx| < 0.3°)" : "NO (align first)");
         }
         
+        // TURRET DISABLED
+        /*
         // --- Turret Status ---
         telemetry.addLine("=== TURRET ===");
         telemetry.addData("Lock Mode", robot.turret.getLockMode());
@@ -168,6 +173,7 @@ public class TeleOp extends CommandOpMode {
             telemetry.addData("On Target", robot.turret.isOnTarget() ? "YES" : "NO");
             telemetry.addData("Dist to Goal", String.format("%.1f in", robot.turret.getDistanceToGoal()));
         }
+        */
         
         // --- Shooter Status ---
         telemetry.addLine("=== SHOOTER ===");

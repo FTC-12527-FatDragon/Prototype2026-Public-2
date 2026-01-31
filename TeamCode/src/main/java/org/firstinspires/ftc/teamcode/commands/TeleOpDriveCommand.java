@@ -2,7 +2,6 @@ package org.firstinspires.ftc.teamcode.commands;
 
 import com.arcrobotics.ftclib.command.CommandBase;
 import com.arcrobotics.ftclib.gamepad.GamepadEx;
-import com.arcrobotics.ftclib.gamepad.GamepadKeys;
 
 import org.firstinspires.ftc.teamcode.subsystems.drive.DriveConstants;
 import org.firstinspires.ftc.teamcode.subsystems.drive.MecanumDrivePinpoint;
@@ -42,35 +41,23 @@ public class TeleOpDriveCommand extends CommandBase {
         
         // ==================== MANUAL DRIVING ====================
         if (!isAuto[0]) {
-            // Get raw inputs
-            double rawLeftX = gamepadEx.getLeftX();
+            // Get raw inputs (same as DriveOnlyTeleOp)
+            double rawLeftX = -gamepadEx.getLeftX();  // Negate X
             double rawLeftY = gamepadEx.getLeftY();
             double rawRightX = gamepadEx.getRightX();
-            
-            // D-Pad rotation input
-            double dpadTurn = 0;
-            if (gamepadEx.getButton(GamepadKeys.Button.DPAD_LEFT)) {
-                dpadTurn = -DriveConstants.dpadTurnSpeed;
-            } else if (gamepadEx.getButton(GamepadKeys.Button.DPAD_RIGHT)) {
-                dpadTurn = DriveConstants.dpadTurnSpeed;
-            }
             
             // Check for input
             boolean hasInput = Math.abs(rawLeftX) > DriveConstants.deadband || 
                                Math.abs(rawLeftY) > DriveConstants.deadband || 
-                               Math.abs(rawRightX) > DriveConstants.deadband ||
-                               dpadTurn != 0;
+                               Math.abs(rawRightX) > DriveConstants.deadband;
             
             if (hasInput) {
                 drive.setGamepad(true);
                 
-                // Apply squared input curve
+                // Apply squared input curve (same as DriveOnlyTeleOp)
                 double forward = rawLeftY * Math.abs(rawLeftY);
-                double strafe = -rawLeftX * Math.abs(rawLeftX);
-                double turn = rawRightX * Math.abs(rawRightX) + dpadTurn;
-                
-                // Clamp turn to [-1, 1]
-                turn = Math.max(-1, Math.min(1, turn));
+                double strafe = rawLeftX * Math.abs(rawLeftX);  // No negation here
+                double turn = rawRightX * Math.abs(rawRightX);
                 
                 // Drive Field Relative
                 drive.moveRobotFieldRelative(forward, strafe, turn);

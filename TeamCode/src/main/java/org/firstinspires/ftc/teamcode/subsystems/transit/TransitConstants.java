@@ -7,10 +7,10 @@ public class TransitConstants {
     public static String transitServoName = "transitServo";
     public static String limitServoName = "limitServo";
 
-    public static double transitUpPos = 0.87;
-    public static double transitDownPos = 0.67;
+    public static double transitUpPos = 0.36;    // 射
+    public static double transitDownPos = 0.62;  // 不射
     
-    // Limit servo positions (TODO: calibrate actual values)
-    public static double limitOpenPos = 0;    // Open when transit is UP
-    public static double limitClosedPos = 0;  // Closed when transit is DOWN
+    // Limit servo positions
+    public static double limitOpenPos = 0.6;     // 开
+    public static double limitClosedPos = 0.3;   // 关
 }

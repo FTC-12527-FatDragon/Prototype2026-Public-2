@@ -208,6 +208,8 @@ public class DriverControls {
         */
         
         // ==================== TURRET LOCK MODE (Right Stick Button) ====================
+        // TURRET DISABLED
+        /*
         // Toggle between Soft Lock and Hard Lock
         // - Soft Lock: Hold turret at 0° (forward)
         // - Hard Lock: Track goal position (only if seeing AprilTag 20 or 24)
@@ -242,6 +244,7 @@ public class DriverControls {
                     }
                 })
         );
+        */
     }
 }
 
