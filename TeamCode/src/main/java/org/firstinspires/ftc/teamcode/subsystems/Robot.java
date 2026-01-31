@@ -39,8 +39,14 @@ public class Robot {
         shooter = new Shooter(hardwareMap);
         transit = new Transit(hardwareMap);
         intake = new Intake(hardwareMap);
-        vision = new Vision(hardwareMap);
-        turret = new Turret(hardwareMap);
+        
+        // VISION/LIMELIGHT DISABLED
+        vision = null;
+        // vision = new Vision(hardwareMap);
+        
+        // TURRET DISABLED
+        turret = null;
+        // turret = new Turret(hardwareMap);
     }
 }
 

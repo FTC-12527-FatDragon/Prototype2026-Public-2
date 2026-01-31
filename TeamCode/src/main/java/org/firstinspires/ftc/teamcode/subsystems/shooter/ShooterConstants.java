@@ -57,10 +57,10 @@ public class ShooterConstants {
     public static double toleranceSlowLower = 50;
 
     // Servo Positions for Angle Adjustment
-    // Updated based on user request: Close (0.85) -> Far (0.29)
-    public static double shooterServoUpPos = 0.29;   // Position for FAST/Long range
-    public static double shooterServoMidPos = 0.29;  // Position for MID range (Calculated average)
-    public static double shooterServoDownPos = 0.85; // Position for SLOW/Short range or Stowed
+    // STOP/MID (0.5), SLOW (0.04), FAST (1.0)
+    public static double shooterServoUpPos = 1.0;    // Position for FAST/Long range
+    public static double shooterServoMidPos = 0.5;   // Position for MID range and STOP
+    public static double shooterServoDownPos = 0.04; // Position for SLOW/Short range
     
     // ==================== ADAPTIVE SHOOTING ====================
     // Goal coordinates (in inches)

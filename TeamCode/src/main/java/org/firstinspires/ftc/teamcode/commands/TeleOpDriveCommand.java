@@ -28,6 +28,8 @@ public class TeleOpDriveCommand extends CommandBase {
 
     @Override
     public void execute() {
+        // VISION/LIMELIGHT DISABLED
+        /*
         // ==================== ABSOLUTE POSITION UPDATE ====================
         // Update absolute field coordinates every frame
         int tagId = vision.getDetectedTagId();
@@ -38,6 +40,7 @@ public class TeleOpDriveCommand extends CommandBase {
         } else {
             drive.updateAbsolutePositionFromOdometry();
         }
+        */
         
         // ==================== MANUAL DRIVING ====================
         if (!isAuto[0]) {

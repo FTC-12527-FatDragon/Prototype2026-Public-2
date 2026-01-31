@@ -47,6 +47,11 @@ public class TeleOp extends CommandOpMode {
         robot = new Robot(hardwareMap);
         gamepadEx1 = new GamepadEx(gamepad1);
 
+        // Register subsystems so their periodic() methods are called
+        CommandScheduler.getInstance().registerSubsystem(robot.shooter);
+        CommandScheduler.getInstance().registerSubsystem(robot.transit);
+        CommandScheduler.getInstance().registerSubsystem(robot.intake);
+
         // Default drive command
         robot.drive.setDefaultCommand(new TeleOpDriveCommand(
                 robot.drive,
@@ -92,6 +97,8 @@ public class TeleOp extends CommandOpMode {
         telemetry.addData("Odo Y", String.format("%.2f in", pose.getY(DistanceUnit.INCH)));
         telemetry.addData("Odo Heading", String.format("%.1f deg", Math.toDegrees(pose.getHeading(AngleUnit.RADIANS))));
         
+        // VISION/LIMELIGHT DISABLED - Absolute position requires Vision
+        /*
         // --- Absolute Field Position (Fused: Vision + Odometry) ---
         telemetry.addLine("=== ABSOLUTE POSITION ===");
         if (robot.drive.hasAbsolutePosition()) {
@@ -101,6 +108,7 @@ public class TeleOp extends CommandOpMode {
         } else {
             telemetry.addData("Abs Position", "NOT INITIALIZED (need to see tag 20/24)");
         }
+        */
         
         // --- Intake/Shooter Status ---
         boolean shooterAccelerationPressed =
@@ -115,6 +123,8 @@ public class TeleOp extends CommandOpMode {
                 gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setFastIntaking(intakeAccelerationPressed);
         
+        // VISION/LIMELIGHT DISABLED
+        /*
         int currentTagId = robot.vision.getDetectedTagId();
         boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
         
@@ -161,6 +171,7 @@ public class TeleOp extends CommandOpMode {
             telemetry.addData("tx", String.format("%.2f°", tx));
             telemetry.addData("CAN FIRE", canFire ? "YES (|tx| < 0.3°)" : "NO (align first)");
         }
+        */
         
         // TURRET DISABLED
         /*

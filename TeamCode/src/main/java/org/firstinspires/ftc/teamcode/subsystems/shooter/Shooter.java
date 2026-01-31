@@ -48,10 +48,10 @@ public class Shooter extends SubsystemBase {
      * Each state defines a target velocity and a servo position.
      */
     public enum ShooterState {
-        STOP(ShooterConstants.stopVelocity, ShooterConstants.shooterServoDownPos),
-        SLOW(ShooterConstants.slowVelocity, ShooterConstants.shooterServoDownPos),
-        MID(ShooterConstants.midVelocity, ShooterConstants.shooterServoMidPos),
-        FAST(ShooterConstants.fastVelocity, ShooterConstants.shooterServoUpPos);
+        STOP(ShooterConstants.stopVelocity, ShooterConstants.shooterServoMidPos),   // 0.5
+        SLOW(ShooterConstants.slowVelocity, ShooterConstants.shooterServoDownPos),  // 0.04
+        MID(ShooterConstants.midVelocity, ShooterConstants.shooterServoMidPos),     // 0.5
+        FAST(ShooterConstants.fastVelocity, ShooterConstants.shooterServoUpPos);    // 1.0
 
         final double shooterVelocity, shooterServoPos;
 
