@@ -21,20 +21,7 @@ public class Shooter extends SubsystemBase {
     public final DcMotorEx rightShooter;
     public final DcMotorEx leftShooter;
     public final Servo shooterServo;
-    public final Servo brakeServo;
     public final TelemetryPacket packet = new TelemetryPacket();
-    
-    // Flag indicating if the shooter is up to speed
-//    public static boolean readyToShoot = false;
-    
-    // Flag indicating if the brake is engaged
-    public static boolean brakeEngaged = false;
-    
-    // Flag for manual brake override (takes priority over auto brake)
-    public static boolean manualBrakeOverride = false;
-    
-    // Auto brake cycle: enabled when shoot button released, disabled once speed reaches stopVelocity
-    private boolean autoBrakeCycleActive = false;
     
     // PID Controller (Currently unused, replaced by Bang-Bang/Feedforward)
     public final PIDController pidController;
@@ -52,13 +39,8 @@ public class Shooter extends SubsystemBase {
         rightShooter = hardwareMap.get(DcMotorEx.class, ShooterConstants.rightShooterName);
         leftShooter = hardwareMap.get(DcMotorEx.class, ShooterConstants.leftShooterName);
         shooterServo = hardwareMap.get(Servo.class, ShooterConstants.shooterServoName);
-        brakeServo = hardwareMap.get(Servo.class, ShooterConstants.brakeServoName);
         pidController = new PIDController(ShooterConstants.kP,
                 ShooterConstants.kI, ShooterConstants.kD);
-        
-        // Initialize brake to released position
-        brakeServo.setPosition(ShooterConstants.brakeServoReleasedPos);
-        brakeEngaged = false;
     }
 
     /**
@@ -168,91 +150,6 @@ public class Shooter extends SubsystemBase {
         );
     }
 
-    /**
-     * Engages the brake servo to stop the flywheel.
-     */
-    public void engageBrake() {
-        brakeServo.setPosition(ShooterConstants.brakeServoEngagedPos);
-        brakeEngaged = true;
-    }
-
-    /**
-     * Releases the brake servo to allow the flywheel to spin.
-     */
-    public void releaseBrake() {
-        brakeServo.setPosition(ShooterConstants.brakeServoReleasedPos);
-        brakeEngaged = false;
-    }
-
-    /**
-     * Toggles the brake servo state.
-     */
-    public void toggleBrake() {
-        if (brakeEngaged) {
-            releaseBrake();
-        } else {
-            engageBrake();
-        }
-    }
-
-    /**
-     * Checks if the brake is currently engaged.
-     * @return True if brake is engaged.
-     */
-    public boolean isBrakeEngaged() {
-        return brakeEngaged;
-    }
-
-    /**
-     * Manually engages the brake (overrides auto brake logic).
-     */
-    public void manualEngageBrake() {
-        manualBrakeOverride = true;
-        engageBrake();
-    }
-
-    /**
-     * Manually releases the brake (returns control to auto brake logic).
-     */
-    public void manualReleaseBrake() {
-        manualBrakeOverride = false;
-        releaseBrake();
-    }
-    
-    /**
-     * Starts an auto brake cycle.
-     * Called when shoot button (LB/RB/RT) is released.
-     * Brake will stay engaged until speed drops to stopVelocity.
-     */
-    public void startAutoBrakeCycle() {
-        autoBrakeCycleActive = true;
-    }
-    
-    /**
-     * Cancels the auto brake cycle.
-     * Called when shoot button (LB/RB/RT) is pressed.
-     */
-    public void cancelAutoBrakeCycle() {
-        autoBrakeCycleActive = false;
-        if (!manualBrakeOverride) {
-            releaseBrake();
-        }
-    }
-    
-    /**
-     * Checks if auto brake cycle is currently active.
-     */
-    public boolean isAutoBrakeCycleActive() {
-        return autoBrakeCycleActive;
-    }
-
-//    public void setReadyToShoot(boolean ready) {
-//        readyToShoot = ready;
-//    }
-//
-//    public boolean getReadyToShoot() {
-//        return readyToShoot;
-//    }
 
     /**
      * Periodic update method.
@@ -268,30 +165,6 @@ public class Shooter extends SubsystemBase {
         // Use adaptive velocity if set, otherwise use state velocity
         double targetVel = (adaptiveVelocity != 0) ? adaptiveVelocity : shooterState.shooterVelocity;
         double power;
-
-        // =================================================================
-        // Auto Brake Logic
-        // Triggered when shoot button (LB/RB/RT) is released.
-        // Brake stays engaged until speed drops below brakeReleaseThresholdTPS (-680 TPS).
-        // Once reached, brake is released and cycle ends.
-        // Skip auto logic if manual override is active.
-        // =================================================================
-        if (!manualBrakeOverride && autoBrakeCycleActive) {
-            // Check if speed has dropped below threshold
-            // Velocities are negative: -680 is threshold
-            // currentVel >= threshold means we've slowed down enough (e.g., -500 >= -680)
-            if (currentVel >= ShooterConstants.brakeReleaseThresholdTPS) {
-                // Speed has dropped below threshold, end brake cycle
-                autoBrakeCycleActive = false;
-                releaseBrake();
-            } else {
-                // Still decelerating, keep brake engaged
-                if (!brakeEngaged) {
-                    engageBrake();
-                }
-            }
-        }
-        // If manualBrakeOverride is true, brake state is controlled manually
 
         // =================================================================
         // Motor Power Control

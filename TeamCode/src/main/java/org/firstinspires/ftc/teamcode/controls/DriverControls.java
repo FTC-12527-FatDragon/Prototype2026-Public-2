@@ -9,6 +9,7 @@ import org.firstinspires.ftc.teamcode.opmodes.teleops.TeleOpConstants;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.ShooterConstants;
+import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
 import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
 
@@ -43,45 +44,27 @@ public class DriverControls {
         new FunctionalButton(
                 () -> gamepad.getButton(GamepadKeys.Button.LEFT_BUMPER)
         ).whenHeld(
-                new InstantCommand(() -> {
-                    robot.shooter.cancelAutoBrakeCycle();  // Cancel brake when pressing
-                    robot.shooter.setShooterState(Shooter.ShooterState.SLOW);
-                })
+                new InstantCommand(() -> robot.shooter.setShooterState(Shooter.ShooterState.SLOW))
         ).whenReleased(
-                new InstantCommand(() -> {
-                    robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    robot.shooter.startAutoBrakeCycle();  // Start brake when releasing
-                })
+                new InstantCommand(() -> robot.shooter.setShooterState(Shooter.ShooterState.STOP))
         );
 
         // Mid Shoot (Right Bumper - Mid Shot)
         new FunctionalButton(
                 () -> gamepad.getButton(GamepadKeys.Button.RIGHT_BUMPER)
         ).whenHeld(
-                new InstantCommand(() -> {
-                    robot.shooter.cancelAutoBrakeCycle();  // Cancel brake when pressing
-                    robot.shooter.setShooterState(Shooter.ShooterState.MID);
-                })
+                new InstantCommand(() -> robot.shooter.setShooterState(Shooter.ShooterState.MID))
         ).whenReleased(
-                new InstantCommand(() -> {
-                    robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    robot.shooter.startAutoBrakeCycle();  // Start brake when releasing
-                })
+                new InstantCommand(() -> robot.shooter.setShooterState(Shooter.ShooterState.STOP))
         );
 
         // Fast Shoot (Right Trigger - Far Shot)
         new FunctionalButton(
                 () -> gamepad.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) >= TeleOpConstants.slowShootTriggerThreshold
         ).whenHeld(
-                new InstantCommand(() -> {
-                    robot.shooter.cancelAutoBrakeCycle();  // Cancel brake when pressing
-                    robot.shooter.setShooterState(Shooter.ShooterState.FAST);
-                })
+                new InstantCommand(() -> robot.shooter.setShooterState(Shooter.ShooterState.FAST))
         ).whenReleased(
-                new InstantCommand(() -> {
-                    robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    robot.shooter.startAutoBrakeCycle();  // Start brake when releasing
-                })
+                new InstantCommand(() -> robot.shooter.setShooterState(Shooter.ShooterState.STOP))
         );
 
         // Transit Fire (Left Trigger + Shoot Button)
@@ -115,17 +98,10 @@ public class DriverControls {
         ).whenReleased(
                 new InstantCommand(() -> robot.intake.setFullPower(false))
         );
-
-        // Manual Brake Control (D-Pad Down)
-        new FunctionalButton(
-                () -> gamepad.getButton(GamepadKeys.Button.DPAD_DOWN)
-        ).whenHeld(
-                new InstantCommand(() -> robot.shooter.manualEngageBrake())
-        ).whenReleased(
-                new InstantCommand(() -> robot.shooter.manualReleaseBrake())
-        );
         
         // ==================== ADAPTIVE FIRE (X = Blue Goal, B = Red Goal) ====================
+        // TEMPORARILY DISABLED - Uncomment to enable adaptive shooting
+        /*
         // X Button: Calculate distance to BLUE goal (tag 20), set adaptive velocity/servo, fire
         // B Button: Calculate distance to RED goal (tag 24), set adaptive velocity/servo, fire
         // NOTE: Adaptive shooting ONLY works when a Goal Tag (ID 20 or 24) is visible!
@@ -228,6 +204,43 @@ public class DriverControls {
                 }
         ).whenHeld(
                 new TransitCommand(robot.transit, robot.shooter)
+        );
+        */
+        
+        // ==================== TURRET LOCK MODE (Right Stick Button) ====================
+        // Toggle between Soft Lock and Hard Lock
+        // - Soft Lock: Hold turret at 0° (forward)
+        // - Hard Lock: Track goal position (only if seeing AprilTag 20 or 24)
+        // Initial state: Soft Lock (set in TeleOp.initialize())
+        new FunctionalButton(
+                () -> gamepad.getButton(GamepadKeys.Button.RIGHT_STICK_BUTTON)
+        ).whenPressed(
+                new InstantCommand(() -> {
+                    Turret.LockMode currentMode = robot.turret.getLockMode();
+                    
+                    if (currentMode == Turret.LockMode.SOFT_LOCK) {
+                        // Try to switch to Hard Lock
+                        int currentTag = robot.vision.getDetectedTagId();
+                        boolean isGoalTag = (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID);
+                        
+                        if (isGoalTag) {
+                            // Can switch to Hard Lock - determine which goal based on tag
+                            if (currentTag == Vision.BLUE_GOAL_TAG_ID) {
+                                robot.turret.enableHardLockBlue();
+                            } else {
+                                robot.turret.enableHardLockRed();
+                            }
+                        }
+                        // If no goal tag visible, stay in Soft Lock (do nothing)
+                        
+                    } else if (currentMode == Turret.LockMode.HARD_LOCK) {
+                        // Switch back to Soft Lock
+                        robot.turret.enableSoftLock();
+                    } else {
+                        // If in MANUAL mode, enable Soft Lock
+                        robot.turret.enableSoftLock();
+                    }
+                })
         );
     }
 }

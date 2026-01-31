@@ -24,7 +24,7 @@ public class DriveConstants {
     // xPoseDW corresponds to the Strafe Pod's X offset.
     // yPoseDW corresponds to the Forward Pod's Y offset.
     // Values are converted from mm (measured) to inches.
-    public static double xPoseDW = -171 / 25.4, yPoseDW = 32.0 / 25.4, headingDW = Math.PI;
+    public static double xPoseDW = -93.45 / 25.4, yPoseDW = 24.05 / 25.4, headingDW = Math.PI;
     
     // OTOS Offsets (Legacy/Alternative)
     public static double xPoseOTOS = Units.mmToInches(-173), yPoseOTOS = 0, headingPoseOTOS = -Math.PI / 2;
@@ -55,13 +55,4 @@ public class DriveConstants {
     // D-Pad Turn Speed
     // Speed for rotation when using D-Pad Left/Right
     public static double dpadTurnSpeed = 0.3;
-    
-    // ==================== AUTO-AIM TARGET COORDINATES ====================
-    // Goal positions for auto-aim (in inches)
-    // Blue goal: (0, 144)
-    // Red goal: (144, 144)
-    public static double blueGoalX = 0;
-    public static double blueGoalY = 144;
-    public static double redGoalX = 144;
-    public static double redGoalY = 144;
 }

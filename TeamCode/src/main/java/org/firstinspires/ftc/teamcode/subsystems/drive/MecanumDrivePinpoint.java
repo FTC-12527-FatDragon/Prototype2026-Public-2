@@ -4,7 +4,6 @@ import static org.firstinspires.ftc.teamcode.subsystems.drive.DriveConstants.str
 
 import com.acmerobotics.dashboard.config.Config;
 import com.arcrobotics.ftclib.command.SubsystemBase;
-import com.arcrobotics.ftclib.controller.PIDController;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -51,50 +50,6 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     
     // Flag to track if we have a valid absolute position
     private boolean hasAbsolutePosition = false;
-    
-    // Auto-aim: Last aligned tag info
-    private int lastAlignedTagId = -1;           // Which tag we last aligned to
-    private boolean hasLastAlignedTag = false;   // Whether we have a record
-    
-    // Auto-aim PID Controller (like Prototype2026-Public)
-    private final PIDController alignPID;
-    
-    // Auto-aim PID constants (tunable via Dashboard)
-    // Distance-adaptive: actual kP = kP_alignH * (1 - distanceFactor * kP_distanceScale)
-    public static double kP_alignH = 0.025;      // Base P gain for auto-aim
-    public static double kI_alignH = 0;          // I gain for auto-aim
-    public static double kD_alignH = 0.008;      // D gain for auto-aim (damping)
-    public static double kP_near = 0.012;        // P gain at close range (weaker to prevent overshoot)
-    public static double kP_far = 0.03;          // P gain at far range (stronger for precision)
-    
-    // Deadband with hysteresis to prevent oscillation at boundary
-    public static double alignDeadbandNear = 3.0;      // Entry deadband for close shots (degrees)
-    public static double alignDeadbandFar = 0.5;       // Entry deadband for far shots (degrees)
-    public static double alignHysteresis = 1.5;        // Exit deadband = entry + hysteresis
-    
-    // Auto-aim offset constants
-    public static double farDistanceThreshold = 94;    // Distance threshold for offset (inches)
-    public static double farOffsetDegrees = 2.0;       // Offset in degrees for far shots
-    
-    // Low-pass filter for tx smoothing (reduces jitter from Limelight noise)
-    public static double txFilterAlpha = 0.3;          // Filter coefficient (0-1, lower = smoother)
-    private double filteredTx = 0;
-    private boolean txFilterInitialized = false;
-    
-    // Current deadband (set based on distance)
-    private double currentDeadband = alignDeadbandNear;
-    
-    // Hysteresis state: true = inside deadband (aligned), false = outside (aligning)
-    private boolean isAligned = false;
-    
-    // Cached offset to prevent jitter (Mode 1: tx-based)
-    private double currentOffset = 0;
-    private boolean offsetLocked = false;
-    
-    // Locked target goal for heading-based alignment (Mode 2: no tag visible)
-    private boolean headingTargetLocked = false;
-    private double lockedTargetGoalX = 0;
-    private double lockedTargetGoalY = 0;
 
     /**
      * Constructor for MecanumDrivePinpoint.
@@ -146,9 +101,6 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         rightBackMotor.setDirection(DcMotorSimple.Direction.FORWARD);
 
         lastPose = new Pose2D(DriveConstants.distanceUnit, 0, 0, DriveConstants.angleUnit, 0);
-        
-        // Initialize auto-aim PID controller
-        alignPID = new PIDController(kP_alignH, kI_alignH, kD_alignH);
         
         // Initialize absolute field coordinates to (0, 0, 0)
         absoluteX = 0;
@@ -409,210 +361,6 @@ public class MecanumDrivePinpoint extends SubsystemBase {
      */
     public boolean hasVisionCalibrated() {
         return hasVisionCalibrated;
-    }
-    
-    /**
-     * Gets the turn power for auto-aim.
-     * 
-     * Features:
-     * - Low-pass filter on tx to reduce Limelight noise
-     * - Hysteresis deadband to prevent oscillation at boundary
-     * - Distance-adaptive PID (weaker at close range, stronger at far range)
-     * - Distance-based offset compensation for far shots
-     * 
-     * @param vision The Vision subsystem.
-     * @return Turn power (-1 to 1). Positive = turn right, Negative = turn left.
-     */
-    public double getAlignTurnPower(Vision vision) {
-        int tagId = vision.getDetectedTagId();
-        boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
-        
-        if (isGoalTag) {
-            // ==================== MODE 1: TX-BASED ALIGNMENT ====================
-            // Record which tag we're aligning to
-            lastAlignedTagId = tagId;
-            hasLastAlignedTag = true;
-            
-            // Get raw tx value (horizontal offset in degrees)
-            double rawTx = vision.getTx();
-            
-            // ========== LOW-PASS FILTER ==========
-            // Smooths out Limelight noise, especially noticeable at close range
-            if (!txFilterInitialized) {
-                filteredTx = rawTx;
-                txFilterInitialized = true;
-            } else {
-                // filteredTx = alpha * rawTx + (1-alpha) * filteredTx
-                filteredTx = txFilterAlpha * rawTx + (1 - txFilterAlpha) * filteredTx;
-            }
-            double tx = filteredTx;
-            
-            // ========== DISTANCE-BASED PARAMETERS ==========
-            // Lock offset and deadband once determined
-            double distance = vision.getDistanceToTag();
-            
-            if (!offsetLocked) {
-                if (distance > 0 && distance > farDistanceThreshold) {
-                    // Far shot: apply offset and use smaller deadband
-                    currentOffset = (tagId == Vision.BLUE_GOAL_TAG_ID) ? -farOffsetDegrees : farOffsetDegrees;
-                    currentDeadband = alignDeadbandFar;
-                } else {
-                    // Close shot: no offset, larger deadband
-                    currentOffset = 0;
-                    currentDeadband = alignDeadbandNear;
-                }
-                offsetLocked = true;
-            }
-            
-            // ========== DISTANCE-ADAPTIVE PID ==========
-            // Interpolate kP between near and far values based on distance
-            double effectiveKp;
-            if (distance <= 0) {
-                effectiveKp = kP_alignH;  // Fallback
-            } else if (distance < 40) {
-                effectiveKp = kP_near;  // Close range: weak P to prevent overshoot
-            } else if (distance > 100) {
-                effectiveKp = kP_far;   // Far range: strong P for precision
-            } else {
-                // Linear interpolation between 40" and 100"
-                double ratio = (distance - 40) / 60.0;
-                effectiveKp = kP_near + (kP_far - kP_near) * ratio;
-            }
-            alignPID.setPID(effectiveKp, kI_alignH, kD_alignH);
-            
-            // ========== HYSTERESIS DEADBAND ==========
-            // Entry threshold: currentDeadband
-            // Exit threshold: currentDeadband + hysteresis
-            // This prevents oscillation at the deadband boundary
-            double targetTx = -currentOffset;
-            double error = Math.abs(tx - targetTx);
-            
-            double entryThreshold = currentDeadband;
-            double exitThreshold = currentDeadband + alignHysteresis;
-            
-            if (isAligned) {
-                // Currently aligned: stay aligned until error exceeds exit threshold
-                if (error > exitThreshold) {
-                    isAligned = false;  // Exit aligned state, start correcting
-                } else {
-                    // Still aligned, but DON'T reset PID (keep D term history)
-                    return 0;
-                }
-            } else {
-                // Currently aligning: become aligned when error drops below entry threshold
-                if (error < entryThreshold) {
-                    isAligned = true;  // Enter aligned state
-                    return 0;
-                }
-            }
-            
-            // ========== PID CONTROL ==========
-            double turn = -alignPID.calculate(tx, targetTx);
-            return Math.max(-1, Math.min(1, turn));
-            
-        } else {
-            // No goal tag visible, reset state
-            offsetLocked = false;
-            currentOffset = 0;
-            headingTargetLocked = false;
-            isAligned = false;
-            txFilterInitialized = false;
-            alignPID.reset();
-            return 0;
-        }
-    }
-    
-    /**
-     * Calculates the heading (in radians) from robot's absolute position to a goal.
-     * Returns the heading where robot's BACK faces the goal (for shooting).
-     * 
-     * @param goalX Goal X coordinate
-     * @param goalY Goal Y coordinate
-     * @return Target heading in radians
-     */
-    private double calculateHeadingToGoal(double goalX, double goalY) {
-        double dx = goalX - absoluteX;
-        double dy = goalY - absoluteY;
-        // atan2 gives angle from robot to goal
-        // Subtract PI because we want robot's BACK to face the goal
-        return Math.atan2(dy, dx) - Math.PI;
-    }
-    
-    /**
-     * Resets the auto-aim offset lock, heading target lock, filter, and PID.
-     * Call this when releasing the aim button.
-     */
-    public void resetAutoAimOffset() {
-        // Reset tx-based offset lock (Mode 1)
-        offsetLocked = false;
-        currentOffset = 0;
-        
-        // Reset hysteresis state
-        isAligned = false;
-        
-        // Reset low-pass filter
-        txFilterInitialized = false;
-        filteredTx = 0;
-        
-        // Reset heading-based target lock (Mode 2)
-        headingTargetLocked = false;
-        lockedTargetGoalX = 0;
-        lockedTargetGoalY = 0;
-        
-        alignPID.reset();
-    }
-    
-    /**
-     * B button: Spin to search for the last aligned tag.
-     * Keeps spinning until that specific tag appears in view.
-     * 
-     * @param vision The vision subsystem
-     * @param spinSpeed Speed to spin (positive = right)
-     * @return Turn power, or 0 if found the tag or never aligned before
-     */
-    public double getSearchTurnPower(Vision vision, double spinSpeed) {
-        if (!hasLastAlignedTag) {
-            return 0;  // Never aligned before, do nothing
-        }
-        
-        int currentTagId = vision.getDetectedTagId();
-        
-        if (currentTagId == lastAlignedTagId) {
-            return 0;  // Found the tag! Stop spinning
-        }
-        
-        // Keep spinning to search
-        return spinSpeed;
-    }
-    
-    /**
-     * Checks if we found the last aligned tag.
-     */
-    public boolean foundLastAlignedTag(Vision vision) {
-        if (!hasLastAlignedTag) return false;
-        return vision.getDetectedTagId() == lastAlignedTagId;
-    }
-    
-    /**
-     * Gets the last aligned tag ID.
-     */
-    public int getLastAlignedTagId() {
-        return hasLastAlignedTag ? lastAlignedTagId : -1;
-    }
-    
-    /**
-     * Checks if we have a recorded aligned tag.
-     */
-    public boolean hasLastAlignedTag() {
-        return hasLastAlignedTag;
-    }
-    
-    /**
-     * Clears the last aligned tag record.
-     */
-    public void clearLastAlignedTag() {
-        hasLastAlignedTag = false;
-        lastAlignedTagId = -1;
     }
 
     // ==================== ABSOLUTE POSITION UPDATE ====================
@@ -880,16 +628,13 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     
     /**
      * Checks if auto-fire is allowed (aligned within threshold).
-     * Takes into account the current offset for far shots.
      * 
      * @param tx The horizontal offset in degrees from Vision
-     * @return true if aligned within autoFireTxThreshold of target
+     * @return true if aligned within autoFireTxThreshold (tx close to 0)
      */
     public boolean isAutoFireAllowed(double tx) {
-        // Target tx is -currentOffset (same as what PID is aiming for)
-        double targetTx = -currentOffset;
-        double error = Math.abs(tx - targetTx);
-        return error < ShooterConstants.autoFireTxThreshold;
+        // Target is tx = 0 (centered)
+        return Math.abs(tx) < ShooterConstants.autoFireTxThreshold;
     }
     
     @Override

@@ -107,52 +107,9 @@ Each subsystem extends `SubsystemBase` (FTCLib) and implements a `periodic()` me
 |--------|-------------|------|
 | `moveRobot(x, y, turn)` | Robot-centric movement | 机器人坐标系移动 |
 | `moveRobotFieldRelative(x, y, turn)` | Field-centric movement | 场地坐标系移动 |
-| `getAlignTurnPower(vision)` | Auto-aim P controller | 自瞄P控制器 |
 | `calculateAdaptiveVelocity(tagId)` | Distance-based velocity | 根据距离计算转速 |
 | `calculateAdaptiveServoPosition(tagId)` | Distance-based angle | 根据距离计算角度 |
 | `applyBreak()` | Position hold PID | 位置保持PID |
-
-#### Auto-Aim Algorithm | 自瞄算法
-
-The auto-aim system uses a **PID controller** with several enhancements to prevent oscillation:
-
-自瞄系统使用 **PID 控制器**，并加入多项优化以防止抖动：
-
-**1. Low-Pass Filter | 低通滤波**
-```java
-// Smooth Limelight noise (especially at close range)
-// 平滑 Limelight 噪声（近距离尤其明显）
-filteredTx = alpha * rawTx + (1 - alpha) * filteredTx;  // alpha = 0.3
-```
-
-**2. Hysteresis Deadband | 滞后死区**
-```java
-// Entry threshold: 3.0° (near) or 0.5° (far)
-// Exit threshold: entry + 1.5° (hysteresis)
-// Prevents oscillation at deadband boundary
-// 进入死区阈值：3.0°(近) 或 0.5°(远)
-// 退出死区阈值：进入 + 1.5°（滞后）
-// 防止在死区边界抖动
-```
-
-**3. Distance-Adaptive PID | 距离自适应 PID**
-```java
-// Close (<40"): kP = 0.012 (weak, prevent overshoot)
-// Far (>100"):  kP = 0.03  (strong, precision)
-// Mid: linear interpolation
-// 近距离(<40")：kP = 0.012（弱，防过冲）
-// 远距离(>100")：kP = 0.03（强，精准）
-// 中间距离：线性插值
-```
-
-**4. PID Parameters | PID 参数**
-| Parameter | Value | Purpose |
-|-----------|-------|---------|
-| `kP_near` | 0.012 | P gain at close range |
-| `kP_far` | 0.03 | P gain at far range |
-| `kD_alignH` | 0.008 | D gain (damping) |
-| `txFilterAlpha` | 0.3 | Filter coefficient (lower = smoother) |
-| `alignHysteresis` | 1.5° | Hysteresis amount |
 
 #### Absolute Position Fusion | 绝对位置融合
 
@@ -327,29 +284,91 @@ The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` re
 
 **File | 文件**: `subsystems/turret/Turret.java`
 
-**Purpose | 用途**: Controls a single motor for turret/gimbal rotation.
+**Purpose | 用途**: Controls a single motor for turret/gimbal rotation with position PID and goal tracking.
 
-控制单个电机用于云台旋转。
+控制单个电机用于云台旋转，支持位置PID和目标跟踪。
+
+#### Lock Modes | 锁定模式
+
+```java
+public enum LockMode {
+    MANUAL,     // No lock, manual power control | 手动控制
+    SOFT_LOCK,  // Hold at fixed angle (default: 0°) | 固定角度
+    HARD_LOCK   // Track goal position | 跟踪目标
+}
+```
+
+**SOFT_LOCK (软锁定)**:
+- Turret holds at 0° (forward) using position PID
+- Good for stable shooting position
+- 云台保持在0°（正前方），使用位置PID
+
+**HARD_LOCK (硬锁定)**:
+- Turret auto-calculates angle to aim at goal
+- Uses robot absolute position + goal coordinates
+- Two targets:
+  - Blue goal: (4, 140) inches
+  - Red goal: (140, 140) inches
+- 云台自动计算瞄准目标的角度
 
 #### Key Methods | 关键方法
 
 | Method | Description | 描述 |
 |--------|-------------|------|
+| **Basic Control | 基础控制** | |
 | `setPower(power)` | Set motor power (-1 to 1) | 设置电机功率 |
 | `stop()` | Stop the motor | 停止电机 |
 | `rotateLeft(speed)` | Rotate left | 向左旋转 |
 | `rotateRight(speed)` | Rotate right | 向右旋转 |
-| `getPosition()` | Get encoder position | 获取编码器位置 |
+| **Encoder | 编码器** | |
+| `getAngleDegrees()` | Get current angle (degrees) | 获取当前角度 |
+| `getAngleRadians()` | Get current angle (radians) | 获取当前角度（弧度） |
 | `resetEncoder()` | Reset encoder to zero | 重置编码器 |
+| `isCalibrated()` | Check if calibrated | 检查是否已校准 |
+| **Lock Modes | 锁定模式** | |
+| `enableSoftLock()` | Enable soft lock at 0° | 启用软锁定（0°） |
+| `enableSoftLock(angle)` | Enable soft lock at angle | 启用软锁定（指定角度） |
+| `enableHardLockBlue()` | Hard lock to blue goal | 硬锁定蓝框 |
+| `enableHardLockRed()` | Hard lock to red goal | 硬锁定红框 |
+| `disableLock()` | Return to manual control | 返回手动控制 |
+| `getLockMode()` | Get current lock mode | 获取当前锁定模式 |
+| **Position Tracking | 位置跟踪** | |
+| `updateRobotPosition(x, y, heading)` | Update robot position | 更新机器人位置 |
+| `calculateAngleToGoal()` | Calculate angle to goal | 计算到目标角度 |
+| `getDistanceToGoal()` | Get distance to goal | 获取到目标距离 |
+| `isOnTarget()` | Check if aimed at goal | 检查是否瞄准目标 |
+| **Geometry | 几何** | |
+| `getLimelightDistanceFromCenterMM()` | Limelight to chassis center | Limelight到底盘中心距离 |
 
 #### Configuration | 配置
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `turretMotorName` | `"turretMotor"` | Motor hardware name |
-| `maxPower` | 1.0 | Maximum motor power |
-| `minPower` | -1.0 | Minimum motor power |
-| `kP/kI/kD` | 0.01/0/0 | PID constants (reserved) |
+| `turretEncoderName` | `"turretEncoder"` | REV Through Bore Encoder |
+| `ENCODER_CPR` | 8192 | Counts per revolution |
+| `GEAR_RATIO` | 1.0 | Motor rotations per turret rotation (TODO: measure) |
+| `minAngleDeg` | -90° | Left limit |
+| `maxAngleDeg` | 90° | Right limit |
+| `kP/kI/kD` | 0/0/0 | Position PID (TODO: tune) |
+| `blueGoalX/Y` | (4, 140) | Blue basket position |
+| `redGoalX/Y` | (140, 140) | Red basket position |
+
+#### Gear Ratio | 齿比
+
+The turret uses a gear reduction between the motor and the turret output. The `GEAR_RATIO` parameter accounts for this:
+
+云台在电机和输出之间有减速齿轮。`GEAR_RATIO` 参数用于计算：
+
+```
+Turret Angle = (Encoder Ticks / ENCODER_CPR / GEAR_RATIO) × 360°
+```
+
+| GEAR_RATIO | Meaning | 含义 |
+|------------|---------|------|
+| 1.0 | Direct drive (1:1) | 直连 |
+| 10.0 | Motor spins 10× for turret to spin 1× | 10:1 减速 |
+| 0.5 | Motor spins 0.5× for turret to spin 1× | 1:2 加速 |
 
 ---
 
@@ -379,7 +398,7 @@ public class ExampleCommand extends CommandBase {
 
 | Command | Function | 功能 |
 |---------|----------|------|
-| `TeleOpDriveCommand` | Field-centric drive + auto-aim | 场地坐标系驾驶 + 自瞄 |
+| `TeleOpDriveCommand` | Field-centric drive (manual) | 场地坐标系驾驶（手动） |
 | `TransitCommand` | Fire when shooter ready | 转速就绪时发射 |
 
 ### Auto Commands | 自动命令
@@ -437,6 +456,28 @@ public abstract class AutoCommandBase extends LinearOpMode {
     public abstract Pose getStartPose();       // Define start position | 定义起始位置
 }
 ```
+
+#### Safety Check | 安全检查
+
+The base class includes an automatic position bounds check:
+
+基类包含自动位置边界检查：
+
+```java
+// If X or Y < -10 inches, something is seriously wrong
+if (currentPose.getX() < -10 || currentPose.getY() < -10) {
+    // Emergency stop!
+    // 紧急停止！
+}
+```
+
+**When triggered | 触发时**:
+- Robot immediately stops all motion
+- Error message displayed: "自动定位错误！"
+- Robot stays stopped until manually terminated
+- Prevents runaway from localization errors
+
+机器人立即停止，显示错误信息，直到手动终止。
 
 ### 5.1 Far Auto | 远起点自动
 
@@ -622,16 +663,30 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **Left Stick** | Strafe | 平移 |
 | **Right Stick** | Turn | 转向 |
 | **Left Stick Button** | Reset heading | 重置朝向 |
-| **LB** | Slow shot (700 TPS) + Auto-aim | 近射 + 自瞄 |
-| **RB** | Mid shot (950 TPS) + Auto-aim | 中射 + 自瞄 |
-| **RT** | Fast shot (1420 TPS) + Auto-aim | 远射 + 自瞄 |
+| **Right Stick Button** | Toggle turret lock (Soft ↔ Hard) | 切换云台锁定模式 |
+| **LB** | Slow shot (700 TPS) | 近射 |
+| **RB** | Mid shot (950 TPS) | 中射 |
+| **RT** | Fast shot (1420 TPS) | 远射 |
 | **LT** | Full power intake + Transit fire | 全功率进球 + 发射 |
-| **A** | Auto-aim only (no shoot) | 仅自瞄（不发射） |
 | **X** | Adaptive fire (Blue goal) - requires Goal Tag visible, disables chassis | 自适应发射（蓝方）- 需看到目标标签，禁用底盘 |
 | **B** | Adaptive fire (Red goal) - requires Goal Tag visible, disables chassis | 自适应发射（红方）- 需看到目标标签，禁用底盘 |
 | **D-Pad Up** | Reverse intake | 反转进球 |
 | **D-Pad Down** | Manual brake | 手动刹车 |
 | **D-Pad L/R** | Fine rotation | 微调转向 |
+
+#### Turret Lock Toggle | 云台锁定切换
+
+| Current Mode | Press Right Stick | Action |
+|--------------|-------------------|--------|
+| **Soft Lock** | See AprilTag 20 or 24 | → **Hard Lock** (aim at detected goal) |
+| **Soft Lock** | No tag visible | Stay in Soft Lock |
+| **Hard Lock** | Any | → **Soft Lock** (0°) |
+
+| 当前模式 | 按下右摇杆 | 动作 |
+|----------|-----------|------|
+| **软锁定** | 看到 AprilTag 20 或 24 | → **硬锁定**（瞄准检测到的目标） |
+| **软锁定** | 看不到标签 | 保持软锁定 |
+| **硬锁定** | 任意 | → **软锁定**（0°） |
 
 ---
 
@@ -674,14 +729,6 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | `setGamepad(on)` | Set gamepad active flag | 设置手柄活动标志 |
 | `isHeadingAtSetPoint(heading)` | Check if at target heading | 检查是否到达目标朝向 |
 | `getAngleToTarget(x, y)` | Calculate angle to point | 计算到目标点的角度 |
-| **Auto-Aim Methods | 自瞄方法** | |
-| `getAlignTurnPower(vision)` | Get turn power for auto-aim | 获取自瞄转向功率 |
-| `resetAutoAimOffset()` | Reset auto-aim state | 重置自瞄状态 |
-| `getSearchTurnPower(vision, speed)` | Get turn power for tag search | 获取搜索标签的转向功率 |
-| `foundLastAlignedTag(vision)` | Check if found last aligned tag | 检查是否找到上次对准的标签 |
-| `getLastAlignedTagId()` | Get last aligned tag ID | 获取上次对准的标签ID |
-| `hasLastAlignedTag()` | Check if has aligned history | 检查是否有对准历史 |
-| `clearLastAlignedTag()` | Clear aligned tag history | 清除对准历史 |
 | **Vision Calibration | 视觉校准** | |
 | `visionCalibrate(vision, alliance)` | Calibrate odometry from vision | 从视觉校准里程计 |
 | `hasVisionCalibrated()` | Check if calibrated | 检查是否已校准 |
@@ -861,31 +908,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **距离错误** | 坐标转换 | 检查 `getDistanceToTag()` | `Vision.java` → `getDistanceToTag()` |
 | **位姿偏移错误** | 视觉转换参数 | 调整偏移常量 | `Util.java` → 视觉偏移常量 |
 
-### 10.4 Auto-Aim Issues | 自瞄问题
-
-| Problem | Possible Cause | Solution | File & Method |
-|---------|----------------|----------|---------------|
-| **Jitters at close range | 近距离抖动** | kP too high for close | Reduce `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
-| **Jitters at all distances | 各距离都抖** | tx noise | Reduce `txFilterAlpha` (0.2~0.15) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
-| **Oscillates at deadband | 死区边界振荡** | Hysteresis too small | Increase `alignHysteresis` | `MecanumDrivePinpoint.java` → `alignHysteresis` |
-| **Auto-aim too slow (near) | 近距离太慢** | kP too low | Increase `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
-| **Auto-aim too slow (far) | 远距离太慢** | kP too low | Increase `kP_far` | `MecanumDrivePinpoint.java` → `kP_far` |
-| **Response too sluggish | 响应迟钝** | Filter too strong | Increase `txFilterAlpha` (0.4~0.5) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
-| **Far shot offset wrong | 远射偏移错误** | Offset calibration | Adjust `farOffsetDegrees` | `MecanumDrivePinpoint.java` → `farOffsetDegrees` |
-| **Offset triggers too early | 偏移触发太早** | Distance threshold | Adjust `farDistanceThreshold` | `MecanumDrivePinpoint.java` → `farDistanceThreshold` |
-
-| 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
-|------|----------|----------|-------------|
-| **近距离抖动** | 近距离kP太高 | 减少 `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
-| **各距离都抖** | tx噪声 | 减少 `txFilterAlpha` (0.2~0.15) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
-| **死区边界振荡** | 滞后太小 | 增加 `alignHysteresis` | `MecanumDrivePinpoint.java` → `alignHysteresis` |
-| **近距离太慢** | kP太低 | 增加 `kP_near` | `MecanumDrivePinpoint.java` → `kP_near` |
-| **远距离太慢** | kP太低 | 增加 `kP_far` | `MecanumDrivePinpoint.java` → `kP_far` |
-| **响应迟钝** | 滤波太强 | 增加 `txFilterAlpha` (0.4~0.5) | `MecanumDrivePinpoint.java` → `txFilterAlpha` |
-| **远射偏移错误** | 偏移校准 | 调整 `farOffsetDegrees` | `MecanumDrivePinpoint.java` → `farOffsetDegrees` |
-| **偏移触发太早** | 距离阈值 | 调整 `farDistanceThreshold` | `MecanumDrivePinpoint.java` → `farDistanceThreshold` |
-
-### 10.5 Intake Issues | 进球问题
+### 10.4 Intake Issues | 进球问题
 
 | Problem | Possible Cause | Solution | File & Method |
 |---------|----------------|----------|---------------|
@@ -899,7 +922,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **功率太低** | 功率档位错误 | 调整功率常量 | `IntakeConstants.java` → 功率值 |
 | **进球方向反了** | 电机方向 | 检查 `setDirection()` | `Intake.java` → 构造函数 |
 
-### 10.6 Transit Issues | 传输问题
+### 10.5 Transit Issues | 传输问题
 
 | Problem | Possible Cause | Solution | File & Method |
 |---------|----------------|----------|---------------|
@@ -913,7 +936,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **球不推出** | 发射器未达速 | 检查 `isShooterAtSetPoint()` | `TransitCommand.java` → `execute()` |
 | **传输触发太早** | 转速容差 | 调整 `shooterEpsilon` | `ShooterConstants.java` → `shooterEpsilon` |
 
-### 10.7 Autonomous Issues | 自动问题
+### 10.6 Autonomous Issues | 自动问题
 
 | Problem | Possible Cause | Solution | File & Method |
 |---------|----------------|----------|---------------|
@@ -922,6 +945,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **Path goes wrong way | 路径走错方向** | Pose coordinates | Check X/Y/heading values | Auto file → pose definitions |
 | **Timeout before finish | 超时未完成** | Timeout too short | Increase `withTimeout()` value | Auto file → command timeouts |
 | **Follower oscillates | 跟踪器振荡** | PID tuning | Adjust Pedro Pathing constants | `Constants.java` → PID values |
+| **"自动定位错误！" error | 定位错误** | Position < -10 | Localization failed, check odometry/vision | `AutoCommandBase.java` → safety check |
 
 | 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
 |------|----------|----------|-------------|
@@ -930,6 +954,27 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **路径走错方向** | 位姿坐标 | 检查X/Y/朝向值 | 自动文件 → 位姿定义 |
 | **超时未完成** | 超时太短 | 增加 `withTimeout()` 值 | 自动文件 → 命令超时 |
 | **跟踪器振荡** | PID调参 | 调整 Pedro Pathing 常量 | `Constants.java` → PID值 |
+| **"自动定位错误！"** | 位置 < -10 | 定位失败，检查里程计/视觉 | `AutoCommandBase.java` → 安全检查 |
+
+### 10.7 Turret Issues | 云台问题
+
+| Problem | Possible Cause | Solution | File & Method |
+|---------|----------------|----------|---------------|
+| **Turret doesn't move | 云台不动** | Motor name wrong | Check hardware map | `TurretConstants.java` → `turretMotorName` |
+| **Angle reading wrong | 角度读数错误** | Encoder not calibrated | Call `resetEncoder()` | `Turret.java` → `resetEncoder()` |
+| **Can't switch to Hard Lock | 无法切换硬锁定** | No AprilTag visible | Aim at goal tag first | Need to see tag 20 or 24 |
+| **Hard Lock doesn't aim | 硬锁定不瞄准** | No absolute position | Check `hasAbsolutePosition()` | `MecanumDrivePinpoint.java` |
+| **PID oscillates | PID振荡** | kP too high | Reduce `kP` | `TurretConstants.java` → PID values |
+| **Turret hits limit | 云台撞限位** | Software limit wrong | Adjust `minAngleDeg/maxAngleDeg` | `TurretConstants.java` |
+
+| 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
+|------|----------|----------|-------------|
+| **云台不动** | 电机名称错误 | 检查硬件映射 | `TurretConstants.java` → 电机名称 |
+| **角度读数错误** | 编码器未校准 | 调用 `resetEncoder()` | `Turret.java` → `resetEncoder()` |
+| **无法切换硬锁定** | 看不到AprilTag | 先瞄准目标标签 | 需要看到标签20或24 |
+| **硬锁定不瞄准** | 没有绝对位置 | 检查 `hasAbsolutePosition()` | `MecanumDrivePinpoint.java` |
+| **PID振荡** | kP过高 | 减小 `kP` | `TurretConstants.java` → PID值 |
+| **云台撞限位** | 软件限位错误 | 调整角度限制 | `TurretConstants.java` |
 
 ---
 
@@ -950,6 +995,12 @@ Available in `TeleOp.java`:
 | `Shooter TPS` | Current shooter velocity | 当前发射器转速 |
 | `Target TPS` | Target shooter velocity | 目标发射器转速 |
 | `CAN FIRE` | Aligned enough to fire | 是否对准可发射 |
+| **Turret | 云台** | |
+| `Lock Mode` | MANUAL/SOFT_LOCK/HARD_LOCK | 锁定模式 |
+| `Angle` | Current turret angle (°) | 当前云台角度 |
+| `Target` | Target turret angle (°) | 目标云台角度 |
+| `On Target` | Hard lock: aiming at goal? | 硬锁定：是否瞄准目标 |
+| `Dist to Goal` | Hard lock: distance to goal | 硬锁定：到目标距离 |
 
 ### Vision Debug | 视觉调试
 
@@ -976,13 +1027,15 @@ Use `vision.getDebugState()` to diagnose:
 - [ ] Shooter reaches velocity? `shooter.isShooterAtSetPoint()` = true
 - [ ] Intake running? `intake.isRunning()` = true
 - [ ] Field-centric correct? Reset heading before start
+- [ ] Turret calibrated? `turret.isCalibrated()` = true (reset encoder when forward)
+- [ ] Turret in Soft Lock? Check telemetry shows SOFT_LOCK
 
 ### During Match Issues | 比赛中问题
 
 | Symptom | Quick Check | 症状 | 快速检查 |
 |---------|-------------|------|----------|
 | Can't shoot | Check shooter TPS in telemetry | 不能发射 | 检查遥测中的发射器转速 |
-| Auto-aim not working | Check if tag is visible | 自瞄不工作 | 检查是否能看到标签 |
+| Vision not working | Check if tag is visible | 视觉不工作 | 检查是否能看到标签 |
 | Robot drifts | Reset heading (Left Stick) | 机器人漂移 | 重置朝向（左摇杆） |
 | Balls not feeding | Check transit servo | 球不传输 | 检查传输舵机 |
 

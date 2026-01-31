@@ -2,7 +2,7 @@ package org.firstinspires.ftc.teamcode.opmodes.teleops;
 
 /**
  * Main TeleOp OpMode.
- * Field-centric Mecanum drive with auto-aim, adaptive shooting, and comprehensive telemetry.
+ * Field-centric Mecanum drive with adaptive shooting and comprehensive telemetry.
  */
 
 import com.acmerobotics.dashboard.FtcDashboard;
@@ -27,13 +27,11 @@ import org.firstinspires.ftc.teamcode.controls.DriverControls;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
 
 /**
- * Main TeleOp - Field Centric Driving with Auto-Aim.
+ * Main TeleOp - Field Centric Driving.
  * 
  * Controls:
  * - Left Stick: Move (field-centric)
  * - Right Stick: Rotate
- * - A (hold): Align to goal tag (20/24) in view
- * - B (hold): Spin to search for last aligned tag
  * - Left Stick Click: Reset heading
  */
 @Config
@@ -67,11 +65,23 @@ public class TeleOp extends CommandOpMode {
 
         DriverControls.bind(gamepadEx1, robot, isAuto);
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
+        
+        // Initialize turret to Soft Lock (0° forward)
+        robot.turret.enableSoftLock();
     }
 
     @Override
     public void run() {
         CommandScheduler.getInstance().run();
+        
+        // --- Update Turret with Robot Position (for Hard Lock) ---
+        if (robot.drive.hasAbsolutePosition()) {
+            robot.turret.updateRobotPosition(
+                    robot.drive.getAbsoluteX(),
+                    robot.drive.getAbsoluteY(),
+                    robot.drive.getAbsoluteHeading()
+            );
+        }
         
         // --- Odometry Pose Telemetry ---
         Pose2D pose = robot.drive.getPose();
@@ -89,37 +99,26 @@ public class TeleOp extends CommandOpMode {
             telemetry.addData("Abs Position", "NOT INITIALIZED (need to see tag 20/24)");
         }
         
-        // --- Auto-Aim Status ---
-        boolean aPressed = gamepadEx1.getButton(GamepadKeys.Button.A);
+        // --- Intake/Shooter Status ---
         boolean shooterAccelerationPressed =
                 gamepadEx1.getButton(GamepadKeys.Button.LEFT_BUMPER) ||
                         gamepadEx1.getButton(GamepadKeys.Button.RIGHT_BUMPER) ||
                         gamepadEx1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) >= 0.3;
         boolean feedPressed =
-                (gamepadEx1.getButton(GamepadKeys.Button.LEFT_BUMPER) ||
-                        gamepadEx1.getButton(GamepadKeys.Button.RIGHT_BUMPER) ||
-                        gamepadEx1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) >= 0.3) &&
+                shooterAccelerationPressed &&
                         gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setShooting(feedPressed);
         boolean intakeAccelerationPressed =
                 gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setFastIntaking(intakeAccelerationPressed);
-        boolean shouldAlign = aPressed || shooterAccelerationPressed || feedPressed;
         
         int currentTagId = robot.vision.getDetectedTagId();
         boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
         
-        telemetry.addLine("=== AUTO-AIM ===");
-        
-        // Current state
-        if (shouldAlign) {
-            String trigger = aPressed ? "A" : "SHOOT";
-            telemetry.addData("Mode", trigger + ": ALIGNING");
-            telemetry.addData("Sees Goal Tag", isGoalTag ? "YES (" + currentTagId + ")" : "NO");
+        telemetry.addLine("=== VISION ===");
+        telemetry.addData("Current Tag", currentTagId != -1 ? currentTagId : "None");
+        if (isGoalTag) {
             telemetry.addData("tx", String.format("%.2f°", robot.vision.getTx()));
-        } else {
-            telemetry.addData("Mode", "MANUAL");
-            telemetry.addData("Current Tag", currentTagId != -1 ? currentTagId : "None");
         }
         
         // --- Vision Robot Pose (when seeing goal tag 20 or 24) ---
@@ -158,6 +157,16 @@ public class TeleOp extends CommandOpMode {
             telemetry.addData("Adaptive Velocity", String.format("%.0f TPS", adaptiveVelocity));
             telemetry.addData("tx", String.format("%.2f°", tx));
             telemetry.addData("CAN FIRE", canFire ? "YES (|tx| < 0.3°)" : "NO (align first)");
+        }
+        
+        // --- Turret Status ---
+        telemetry.addLine("=== TURRET ===");
+        telemetry.addData("Lock Mode", robot.turret.getLockMode());
+        telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
+        telemetry.addData("Target", String.format("%.1f°", robot.turret.getTargetAngle()));
+        if (robot.turret.getLockMode() == org.firstinspires.ftc.teamcode.subsystems.turret.Turret.LockMode.HARD_LOCK) {
+            telemetry.addData("On Target", robot.turret.isOnTarget() ? "YES" : "NO");
+            telemetry.addData("Dist to Goal", String.format("%.1f in", robot.turret.getDistanceToGoal()));
         }
         
         // --- Shooter Status ---

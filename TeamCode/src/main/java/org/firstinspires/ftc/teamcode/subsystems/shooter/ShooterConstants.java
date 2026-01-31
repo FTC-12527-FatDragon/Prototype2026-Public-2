@@ -11,7 +11,6 @@ public class ShooterConstants {
     public static String leftShooterName = "leftShooterMotor";
     public static String rightShooterName = "rightShooterMotor";
     public static String shooterServoName = "shooterServo";
-    public static String brakeServoName = "brakeServo";
 
     // Velocity tolerance (TPS) - Used to check if shooter is at target speed
     // Increased from 20 to 100 for more reliable firing
@@ -33,9 +32,6 @@ public class ShooterConstants {
      */
     // Idle power (open-loop, no PID control)
     public static double idlePower = 0.27;
-    
-    // Brake release threshold: release brake when speed drops below this (TPS)
-    public static double brakeReleaseThresholdTPS = -680;
     
     public static double stopVelocity = -600;  // Legacy, used for reference only
     public static double fastVelocity = -1420; // Far shots (128.4") (~51% power)
@@ -65,15 +61,6 @@ public class ShooterConstants {
     public static double shooterServoUpPos = 0.29;   // Position for FAST/Long range
     public static double shooterServoMidPos = 0.29;  // Position for MID range (Calculated average)
     public static double shooterServoDownPos = 0.85; // Position for SLOW/Short range or Stowed
-
-    // Brake Servo Positions
-    public static double brakeServoEngagedPos = 0.85;  // Brake engaged (stopping flywheel)
-    public static double brakeServoReleasedPos = 0.81; // Brake released (flywheel free to spin)
-
-    // Auto Brake Threshold
-    // 100 RPM = 100/60 * 28 ticks = ~47 TPS
-    // If current velocity exceeds target by this amount, engage brake
-    public static double brakeTriggerThresholdTPS = 47.0; // ~100 RPM
     
     // ==================== ADAPTIVE SHOOTING ====================
     // Goal coordinates (in inches)

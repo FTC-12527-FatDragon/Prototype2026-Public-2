@@ -4,17 +4,67 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
-## [2026-01-30] - Transit Limit Servo & Drive Test OpMode
+## [2026-01-30] - Turret Gear Ratio Support
+
+### Added
+- **Gear Ratio Parameter** (`TurretConstants.java`)
+    - `GEAR_RATIO`: Motor rotations per turret rotation (default: 1.0, TODO: measure)
+    - Allows accurate angle calculation with geared turret mechanisms
+
+### Changed
+- `Turret.java` → `getAngleDegrees()`: Now accounts for gear ratio in angle calculation
+
+---
+
+## [2026-01-30] - Turret Lock Modes & Auto Safety Check
+
+### Added
+- **Turret Lock Modes** (`Turret.java`)
+    - `SOFT_LOCK`: Turret holds at 0° (forward) using position PID
+    - `HARD_LOCK`: Turret auto-aims at goal based on robot absolute position
+        - Blue goal: (4, 140) inches
+        - Red goal: (140, 140) inches
+    - Toggle with Right Stick Button (only switches to HARD_LOCK when seeing AprilTag 20 or 24)
+    - Initial state: SOFT_LOCK
+    
+- **Auto Safety Check** (`AutoCommandBase.java`)
+    - Emergency stop if robot position X or Y < -10 inches
+    - Displays "自动定位错误！" error message
+    - Robot stops in place until manually stopped
+    - Prevents runaway from localization errors
+
+### Changed
+- `TeleOp.java`: Added turret telemetry (mode, angle, target, on-target status)
+- `DriverControls.java`: Added Right Stick Button binding for turret lock toggle
+- `TurretConstants.java`: Added goal coordinates for blue/red baskets
+
+---
+
+## [2026-01-30] - Major Refactor for Turret-Based Aiming
+
+### Removed
+- **Chassis Auto-Aim**: Removed all chassis-based auto-aim code
+    - `MecanumDrivePinpoint.java`: Removed `getAlignTurnPower()`, `resetAutoAimOffset()`, `getSearchTurnPower()`, and related methods
+    - `TeleOpDriveCommand.java`: Simplified to manual-only driving
+    - `DriveConstants.java`: Removed unused goal coordinates
+    
+- **All Autonomous Programs**: Deleted 8 auto OpModes (preparing for new autos)
+    - `BlueFar.java`, `BlueFar24599.java`, `BlueNearOne.java`, `BlueNearTwo.java`
+    - `RedFar.java`, `RedFar24599.java`, `RedNearOne.java`, `RedNearTwo.java`
+    - Kept: `AutoCommandBase.java`, `AutoConstants.java` (base infrastructure)
 
 ### Added
 - **Transit Limit Servo**: Added `limitServo` to Transit subsystem
-    - `TransitConstants.java`: Added `limitServoName`, `limitOpenPos`, `limitClosedPos`
-    - `Transit.java`: Limit servo auto-follows transit state (open when UP, closed when DOWN)
+    - Auto-follows transit state (open when UP, closed when DOWN)
+    
+- **Turret Encoder Support**: REV Through Bore Encoder V2 (REV-11-3174)
+    - `Turret.java`: Added angle measurement methods
+        - `getAngleDegrees()`, `getAngleRadians()`, `resetEncoder()`
+        - `getLimelightDistanceFromCenterMM()` - geometry calculation for Limelight on turret
+    - `TurretConstants.java`: Added encoder config (8192 CPR), angle limits, geometry offsets
     
 - **Drive Only Test OpMode** (`tests/DriveOnlyTeleOp.java`)
     - Standalone drivetrain test with only 4 motors + Pinpoint
-    - Field-centric drive with same logic as main TeleOp
-    - Controls: Left stick = move, Right stick = turn, Left stick click = reset heading
 
 ---
 

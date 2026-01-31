@@ -71,12 +71,42 @@ public abstract class AutoCommandBase extends LinearOpMode {
 
         // Main Loop (aligned with Prototype2026-Public)
         while (opModeIsActive() && !isStopRequested()) {
+            // Get current position
+            Pose currentPose = follower.getPose();
+            
+            // === SAFETY CHECK: Position bounds ===
+            // If X or Y < -10, something is seriously wrong with localization
+            if (currentPose.getX() < AutoConstants.POSITION_LOWER_BOUND || 
+                currentPose.getY() < AutoConstants.POSITION_LOWER_BOUND) {
+                // Emergency stop!
+                follower.breakFollowing();  // Stop path following
+                shooter.setShooterState(Shooter.ShooterState.STOP);
+                intake.setReversed(false);
+                intake.setFullPower(false);
+                
+                // Display error message
+                telemetry.clearAll();
+                telemetry.addLine("========== ERROR ==========");
+                telemetry.addLine("自动定位错误！");
+                telemetry.addLine("Auto Localization Error!");
+                telemetry.addLine("===========================");
+                telemetry.addData("X", String.format("%.2f", currentPose.getX()));
+                telemetry.addData("Y", String.format("%.2f", currentPose.getY()));
+                telemetry.addLine("Robot stopped for safety.");
+                telemetry.update();
+                
+                // Stay here until stop is pressed
+                while (opModeIsActive() && !isStopRequested()) {
+                    sleep(100);
+                }
+                break;  // Exit main loop
+            }
+            
             // Run the CommandScheduler to execute scheduled commands
             // follower.update() is now called inside AutoDriveCommand.execute()
             CommandScheduler.getInstance().run();
 
             // Real-time position telemetry
-            Pose currentPose = follower.getPose();
             telemetry.addData("X", String.format("%.2f", currentPose.getX()));
             telemetry.addData("Y", String.format("%.2f", currentPose.getY()));
             telemetry.addData("Heading (deg)", String.format("%.1f", Math.toDegrees(currentPose.getHeading())));

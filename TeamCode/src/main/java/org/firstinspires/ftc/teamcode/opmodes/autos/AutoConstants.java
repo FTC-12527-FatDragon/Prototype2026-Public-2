@@ -8,6 +8,13 @@ import com.pedropathing.geometry.Pose;
  */
 public class AutoConstants {
 
+    // =========================================================
+    // Safety Bounds
+    // =========================================================
+    // If robot position goes below this value, localization is likely wrong
+    // Auto will emergency stop to prevent damage
+    public static final double POSITION_LOWER_BOUND = -10.0;  // inches
+
     // Helper to convert degrees to radians
     public static double toRadians(double degrees) {
         return Math.toRadians(degrees);

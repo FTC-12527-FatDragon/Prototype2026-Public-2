@@ -38,8 +38,8 @@ public class DriveOnlyTeleOp extends LinearOpMode {
     public static double deadband = 0.03;
     
     // Pinpoint offsets (in inches)
-    public static double xPoseDW = -171 / 25.4;
-    public static double yPoseDW = 32.0 / 25.4;
+    public static double xPoseDW = -93.45 / 25.4;
+    public static double yPoseDW = 24.05 / 25.4;
     
     @Override
     public void runOpMode() {
@@ -89,14 +89,14 @@ public class DriveOnlyTeleOp extends LinearOpMode {
                 yawOffset = pinpoint.getHeading(AngleUnit.RADIANS);
             }
             
-            // Get raw inputs
-            double rawLeftX = gamepad1.left_stick_x;
+            // Get raw inputs (same as TeleOpDriveCommand)
+            double rawLeftX = -gamepad1.left_stick_x;
             double rawLeftY = -gamepad1.left_stick_y;  // Negate Y (up = positive)
             double rawRightX = gamepad1.right_stick_x;
             
             // Apply squared input curve
             double forward = rawLeftY * Math.abs(rawLeftY);
-            double strafe = -rawLeftX * Math.abs(rawLeftX);
+            double strafe = rawLeftX * Math.abs(rawLeftX);  // No negation here
             double turn = rawRightX * Math.abs(rawRightX);
             
             // Apply deadband
@@ -107,14 +107,14 @@ public class DriveOnlyTeleOp extends LinearOpMode {
             boolean hasInput = forward != 0 || strafe != 0 || Math.abs(turn) > deadband;
             
             if (hasInput) {
-                // Field-centric transformation
+                // Field-centric transformation (same as MecanumDrivePinpoint)
                 double botHeading = pinpoint.getHeading(AngleUnit.RADIANS) - yawOffset;
                 
                 double rotX = strafe * Math.cos(botHeading) - forward * Math.sin(botHeading);
                 double rotY = strafe * Math.sin(botHeading) + forward * Math.cos(botHeading);
                 
-                // Apply strafing balance
-                rotX *= strafingBalance;
+                // Apply strafing balance with negation (same as MecanumDrivePinpoint)
+                rotX = -rotX * strafingBalance;
                 
                 // Calculate motor powers (Mecanum kinematics)
                 double denominator = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(turn), 1);
@@ -138,8 +138,8 @@ public class DriveOnlyTeleOp extends LinearOpMode {
             
             // Telemetry
             telemetry.addData("Heading", "%.1f°", Math.toDegrees(pinpoint.getHeading(AngleUnit.RADIANS) - yawOffset));
-            telemetry.addData("Pos X", "%.2f in", pinpoint.getPosX() / 25.4);  // Convert mm to inches
-            telemetry.addData("Pos Y", "%.2f in", pinpoint.getPosY() / 25.4);
+            telemetry.addData("Pos X", "%.2f in", pinpoint.getPosX(DistanceUnit.INCH));
+            telemetry.addData("Pos Y", "%.2f in", pinpoint.getPosY(DistanceUnit.INCH));
             telemetry.addLine();
             telemetry.addData("LF Power", "%.2f", leftFrontMotor.getPower());
             telemetry.addData("LB Power", "%.2f", leftBackMotor.getPower());
