@@ -87,8 +87,8 @@ public abstract class AutoCommandBase extends LinearOpMode {
                 // Display error message
                 telemetry.clearAll();
                 telemetry.addLine("========== ERROR ==========");
-                telemetry.addLine("自动定位错误！");
                 telemetry.addLine("Auto Localization Error!");
+                telemetry.addLine("Position out of bounds!");
                 telemetry.addLine("===========================");
                 telemetry.addData("X", String.format("%.2f", currentPose.getX()));
                 telemetry.addData("Y", String.format("%.2f", currentPose.getY()));

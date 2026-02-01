@@ -221,10 +221,10 @@ public final class Units {
      *          Pilot: Mikazuki Augus
      *          Organization: Tekkadan
      * 
-     *          "Raise your flag! 声の限り"
+     *          "Raise your flag! With all your voice!"
      * 
      *          Found the Easter Egg? You're a true Tekkadan member! 🔧
-     *          铁华团永不言败！
+     *          Tekkadan never gives up!
      * 
      * ============================================================================
      */

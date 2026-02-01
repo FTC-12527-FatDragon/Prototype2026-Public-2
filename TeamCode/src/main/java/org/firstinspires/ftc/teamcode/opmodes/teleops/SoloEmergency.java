@@ -1,13 +1,13 @@
 package org.firstinspires.ftc.teamcode.opmodes.teleops;
 
 /**
- * EMERGENCY BACKUP - 最简化版本
- * 无传感器，纯开环，机器人坐标系
+ * EMERGENCY BACKUP - Minimal Version
+ * No sensors, pure open-loop, robot-centric
  * 
- * 底盘：有头模式（机器人坐标系）
- * Shooter：纯开环功率，无速度检测
- * 云台：D-Pad 左右手动控制
- * Intake：LT 开启
+ * Drivetrain: Robot-centric (headed) mode
+ * Shooter: Pure open-loop power, no velocity feedback
+ * Turret: D-Pad left/right manual control
+ * Intake: LT to activate
  */
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -19,7 +19,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 @TeleOp(name = "!!! EMERGENCY !!!", group = "!Emergency")
 public class SoloEmergency extends LinearOpMode {
     
-    // 底盘
+    // Drivetrain
     DcMotor fl, fr, bl, br;
     
     // Shooter
@@ -32,17 +32,17 @@ public class SoloEmergency extends LinearOpMode {
     // Transit
     Servo transit, limit;
     
-    // 云台
+    // Turret
     DcMotor turret;
     
-    // ========== 开环功率设置 ==========
-    // Shooter 功率（0-1）
+    // ========== Open-loop Power Settings ==========
+    // Shooter power (0-1)
     double SLOW_POWER = 0.3;
     double MID_POWER = 0.45;
     double FAST_POWER = 0.6;
     double IDLE_POWER = 0.27;
     
-    // Shooter 角度
+    // Shooter angle
     double SLOW_ANGLE = 0.04;
     double MID_ANGLE = 0.5;
     double FAST_ANGLE = 1.0;
@@ -53,19 +53,19 @@ public class SoloEmergency extends LinearOpMode {
     double LIMIT_OPEN = 0.6;
     double LIMIT_CLOSE = 0.3;
     
-    // 云台速度
+    // Turret speed
     double TURRET_SPEED = 0.3;
     
-    // Shooter 加速计时
-    double SPINUP_TIME = 1.0;  // 加速等待时间（秒）
+    // Shooter spin-up timing
+    double SPINUP_TIME = 1.0;  // Spin-up wait time (seconds)
     double shooterStartTime = 0;
     boolean wasShooterOn = false;
     
     @Override
     public void runOpMode() {
         
-        // ========== 初始化 ==========
-        // 底盘
+        // ========== Initialization ==========
+        // Drivetrain
         fl = hardwareMap.get(DcMotor.class, "frontLeftMotor");
         fr = hardwareMap.get(DcMotor.class, "frontRightMotor");
         bl = hardwareMap.get(DcMotor.class, "backLeftMotor");
@@ -86,7 +86,7 @@ public class SoloEmergency extends LinearOpMode {
         transit = hardwareMap.get(Servo.class, "transitServo");
         limit = hardwareMap.get(Servo.class, "limitServo");
         
-        // 云台
+        // Turret
         turret = hardwareMap.get(DcMotor.class, "turretMotor");
         
         telemetry.addLine("=== EMERGENCY MODE ===");
@@ -97,51 +97,51 @@ public class SoloEmergency extends LinearOpMode {
         
         while (opModeIsActive()) {
             
-            // ========== 底盘 - 机器人坐标系（有头） ==========
-            double y = -gamepad1.left_stick_y;  // 前后
-            double x = gamepad1.left_stick_x;   // 左右
-            double r = gamepad1.right_stick_x;  // 旋转
+            // ========== Drivetrain - Robot-centric (headed) ==========
+            double y = -gamepad1.left_stick_y;  // Forward/back
+            double x = gamepad1.left_stick_x;   // Left/right
+            double r = gamepad1.right_stick_x;  // Rotation
             
-            // 麦轮公式
+            // Mecanum formula
             fl.setPower(y + x + r);
             fr.setPower(y - x - r);
             bl.setPower(y - x + r);
             br.setPower(y + x - r);
             
-            // ========== Shooter - 纯开环 ==========
+            // ========== Shooter - Pure Open-loop ==========
             double shootPower = IDLE_POWER;
             double servoAngle = MID_ANGLE;
             boolean shooterOn = false;
             
             if (gamepad1.left_bumper) {
-                // 近射
+                // Near shot
                 shootPower = SLOW_POWER;
                 servoAngle = SLOW_ANGLE;
                 shooterOn = true;
             } else if (gamepad1.right_bumper) {
-                // 中射
+                // Mid shot
                 shootPower = MID_POWER;
                 servoAngle = MID_ANGLE;
                 shooterOn = true;
             } else if (gamepad1.right_trigger > 0.3) {
-                // 远射
+                // Far shot
                 shootPower = FAST_POWER;
                 servoAngle = FAST_ANGLE;
                 shooterOn = true;
             }
             
-            // 记录 Shooter 开始加速的时间
+            // Record when Shooter starts spinning up
             if (shooterOn && !wasShooterOn) {
-                // 刚开始加速
+                // Just started spinning up
                 shooterStartTime = getRuntime();
             }
             if (!shooterOn) {
-                // Shooter 停了，重置计时
+                // Shooter stopped, reset timer
                 shooterStartTime = 0;
             }
             wasShooterOn = shooterOn;
             
-            // 计算已加速时间
+            // Calculate elapsed spin-up time
             double spinupElapsed = shooterOn ? (getRuntime() - shooterStartTime) : 0;
             boolean shooterReady = spinupElapsed >= SPINUP_TIME;
             
@@ -153,13 +153,13 @@ public class SoloEmergency extends LinearOpMode {
             if (gamepad1.left_trigger > 0.3) {
                 intake.setPower(1.0);
             } else if (gamepad1.dpad_up) {
-                intake.setPower(-1.0);  // 反转
+                intake.setPower(-1.0);  // Reverse
             } else {
-                intake.setPower(0.5);   // 默认低速
+                intake.setPower(0.5);   // Default low speed
             }
             
             // ========== Transit ==========
-            // 条件：LT + 射击键 + Shooter 已加速 1 秒
+            // Condition: LT + shoot button + Shooter spun up for 1 sec
             boolean wantToShoot = gamepad1.left_trigger > 0.3 && 
                 (gamepad1.left_bumper || gamepad1.right_bumper || gamepad1.right_trigger > 0.3);
             boolean canShoot = wantToShoot && shooterReady;
@@ -172,7 +172,7 @@ public class SoloEmergency extends LinearOpMode {
                 limit.setPosition(LIMIT_CLOSE);
             }
             
-            // ========== 云台 - D-Pad 手动 ==========
+            // ========== Turret - D-Pad Manual ==========
             if (gamepad1.dpad_left) {
                 turret.setPower(-TURRET_SPEED);
             } else if (gamepad1.dpad_right) {
@@ -187,12 +187,12 @@ public class SoloEmergency extends LinearOpMode {
             telemetry.addData("Shooter", shooterOn ? "ON" : "IDLE");
             telemetry.addData("Power", String.format("%.2f", shootPower));
             
-            // 显示加速状态
+            // Display spin-up status
             if (shooterOn) {
                 if (shooterReady) {
                     telemetry.addData("Status", "✓ READY TO FIRE");
                 } else {
-                    telemetry.addData("Status", String.format("加速中... %.1fs", spinupElapsed));
+                    telemetry.addData("Status", String.format("Spinning up... %.1fs", spinupElapsed));
                 }
             } else {
                 telemetry.addData("Status", "IDLE");
@@ -200,9 +200,9 @@ public class SoloEmergency extends LinearOpMode {
             
             telemetry.addData("Transit", canShoot ? "FIRING!" : (wantToShoot ? "WAIT..." : "READY"));
             telemetry.addLine("");
-            telemetry.addLine("LB=近 RB=中 RT=远");
-            telemetry.addLine("LT=进球+发射(需等1秒)");
-            telemetry.addLine("D-Pad L/R=云台");
+            telemetry.addLine("LB=Near RB=Mid RT=Far");
+            telemetry.addLine("LT=Intake+Fire(wait 1s)");
+            telemetry.addLine("D-Pad L/R=Turret");
             telemetry.update();
         }
     }
