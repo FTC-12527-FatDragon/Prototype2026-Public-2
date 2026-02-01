@@ -1,8 +1,11 @@
 package org.firstinspires.ftc.teamcode.opmodes.teleops;
 
 /**
- * Main TeleOp OpMode.
- * Field-centric Mecanum drive with adaptive shooting and comprehensive telemetry.
+ * Main TeleOp OpMode - Chassis Auto-Aim.
+ * Field-centric Mecanum drive with CHASSIS auto-aim (turret locked at 0°).
+ * Turret is ALWAYS soft-locked at 0° (forward), chassis handles aiming.
+ * 
+ * For TURRET auto-aim (hard lock), use SoloBlue or SoloRed.
  */
 
 import com.acmerobotics.dashboard.FtcDashboard;
@@ -21,7 +24,6 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
-import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
 import org.firstinspires.ftc.teamcode.commands.TeleOpDriveCommand;
 import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
 import org.firstinspires.ftc.teamcode.controls.DriverControls;
@@ -38,7 +40,7 @@ import org.firstinspires.ftc.teamcode.subsystems.Robot;
 @Config
 @Configurable
 @com.qualcomm.robotcore.eventloop.opmode.TeleOp(name = "Solo", group = "TeleOp")
-public class TeleOp extends CommandOpMode {
+public class Solo extends CommandOpMode {
     private Robot robot;
     private GamepadEx gamepadEx1;
     private boolean[] isAuto = {false};
@@ -85,46 +87,24 @@ public class TeleOp extends CommandOpMode {
     public void run() {
         CommandScheduler.getInstance().run();
         
-        // --- Update Absolute Position & Turret ---
-        // TURRET/VISION DISABLED - Uncomment when ready
+        // Solo: Turret is ALWAYS soft-locked at 0° (forward)
+        // Chassis handles auto-aim via TeleOpDriveCommand.getAlignTurnPower()
+        // Turret.periodic() handles SOFT_LOCK automatically.
+        
+        // --- Update Absolute Position for Chassis Auto-Aim ---
+        // CHASSIS AUTO-AIM DISABLED - Uncomment when ready
         /*
-        // ===== ABSOLUTE POSITION UPDATE (with Turret Compensation) =====
-        // Limelight is on the turret, so we compensate for turret angle
+        // ===== ABSOLUTE POSITION UPDATE (for chassis auto-aim) =====
+        // In SOFT_LOCK mode, turret is at 0°, so no turret compensation needed
         if (robot.vision != null) {
             int currentTagId = robot.vision.getDetectedTagId();
             boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
             
             if (isGoalTag) {
-                // Get turret angle for compensation (0 if not calibrated)
-                double turretAngle = (robot.turret != null && robot.turret.isCalibrated()) 
-                    ? robot.turret.getAngleRadians() 
-                    : 0;
-                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
+                // Turret is locked at 0°, so turretAngle = 0
+                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, 0);
             } else {
-                // Odometry dead-reckoning when no goal tag
                 robot.drive.updateAbsolutePositionFromOdometry();
-            }
-        }
-        
-        // ===== TURRET UPDATE =====
-        if (robot.turret != null && robot.vision != null) {
-            int currentTagId = robot.vision.getDetectedTagId();
-            boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
-            
-            // Update turret with tx (for HARD_LOCK tx tracking)
-            if (isGoalTag) {
-                robot.turret.updateTx(robot.vision.getTx(), true);
-            } else {
-                robot.turret.updateTx(0, false);
-            }
-            
-            // Update turret with robot position (for HARD_LOCK odometry mode)
-            if (robot.drive.hasAbsolutePosition()) {
-                robot.turret.updateRobotPosition(
-                        robot.drive.getAbsoluteX(),
-                        robot.drive.getAbsoluteY(),
-                        robot.drive.getAbsoluteHeading()
-                );
             }
         }
         */
@@ -135,9 +115,9 @@ public class TeleOp extends CommandOpMode {
         telemetry.addData("Odo Y", String.format("%.2f in", pose.getY(DistanceUnit.INCH)));
         telemetry.addData("Odo Heading", String.format("%.1f deg", Math.toDegrees(pose.getHeading(AngleUnit.RADIANS))));
         
-        // VISION/LIMELIGHT DISABLED - Absolute position requires Vision
+        // CHASSIS AUTO-AIM DISABLED - Uncomment when ready
         /*
-        // --- Absolute Field Position (Fused: Vision + Odometry) ---
+        // --- Absolute Field Position (for chassis auto-aim) ---
         telemetry.addLine("=== ABSOLUTE POSITION ===");
         if (robot.drive.hasAbsolutePosition()) {
             telemetry.addData("Abs X", String.format("%.2f in", robot.drive.getAbsoluteX()));
@@ -146,6 +126,25 @@ public class TeleOp extends CommandOpMode {
         } else {
             telemetry.addData("Abs Position", "NOT INITIALIZED (need to see tag 20/24)");
         }
+        
+        // --- Vision Status ---
+        if (robot.vision != null) {
+            int currentTagId = robot.vision.getDetectedTagId();
+            boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
+            
+            telemetry.addLine("=== VISION ===");
+            telemetry.addData("Current Tag", currentTagId != -1 ? currentTagId : "None");
+            if (isGoalTag) {
+                telemetry.addData("tx", String.format("%.2f°", robot.vision.getTx()));
+                telemetry.addData("Distance", String.format("%.2f in", robot.vision.getDistanceToTag()));
+            }
+        }
+        
+        // --- Chassis Auto-Aim Status ---
+        // Note: Actual auto-aim is in TeleOpDriveCommand, triggered by A button or shoot buttons
+        telemetry.addLine("=== CHASSIS AUTO-AIM ===");
+        telemetry.addData("Mode", "SOFT LOCK (chassis aims, turret fixed 0°)");
+        telemetry.addData("Aligned", robot.drive.isAligned() ? "YES" : "NO");
         */
         
         // --- Intake/Shooter Status ---
@@ -161,75 +160,12 @@ public class TeleOp extends CommandOpMode {
                 gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setFastIntaking(intakeAccelerationPressed);
         
-        // VISION/LIMELIGHT DISABLED
-        /*
-        int currentTagId = robot.vision.getDetectedTagId();
-        boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
-        
-        telemetry.addLine("=== VISION ===");
-        telemetry.addData("Current Tag", currentTagId != -1 ? currentTagId : "None");
-        if (isGoalTag) {
-            telemetry.addData("tx", String.format("%.2f°", robot.vision.getTx()));
-        }
-        
-        // --- Vision Robot Pose (when seeing goal tag 20 or 24) ---
-        if (isGoalTag) {
-            Pose3D visionPose = robot.vision.getRobotPose();
-            double distance = robot.vision.getDistanceToTag();
-            
-            telemetry.addLine("=== VISION POSE ===");
-            if (visionPose != null) {
-                // Pose3D position is in meters, convert to inches
-                double visionX = visionPose.getPosition().x * 39.3701;
-                double visionY = visionPose.getPosition().y * 39.3701;
-                double visionHeading = visionPose.getOrientation().getYaw(AngleUnit.DEGREES);
-                
-                telemetry.addData("Vision X", String.format("%.2f in", visionX));
-                telemetry.addData("Vision Y", String.format("%.2f in", visionY));
-                telemetry.addData("Vision Heading", String.format("%.1f deg", visionHeading));
-                telemetry.addData("Distance to Tag", String.format("%.2f in", distance));
-            } else {
-                telemetry.addData("Vision Pose", "NULL (tag detected but no pose)");
-            }
-        }
-        
-        // --- Adaptive Shooting ---
-        if (isGoalTag && robot.drive.hasAbsolutePosition()) {
-            telemetry.addLine("=== ADAPTIVE SHOOTING ===");
-            
-            double distToGoal = robot.drive.distanceToGoal(currentTagId);
-            double adaptiveVelocity = robot.drive.calculateAdaptiveVelocity(currentTagId);
-            String segment = robot.drive.getAdaptiveSegment(currentTagId);
-            double tx = robot.vision.getTx();
-            boolean canFire = robot.drive.isAutoFireAllowed(tx);
-            
-            telemetry.addData("Distance to Goal", String.format("%.2f in", distToGoal));
-            telemetry.addData("Segment", segment);
-            telemetry.addData("Adaptive Velocity", String.format("%.0f TPS", adaptiveVelocity));
-            telemetry.addData("tx", String.format("%.2f°", tx));
-            telemetry.addData("CAN FIRE", canFire ? "YES (|tx| < 0.3°)" : "NO (align first)");
-        }
-        */
-        
-        // --- Turret Status ---
-        // TURRET DISABLED - Uncomment when ready
-        /*
+        // --- Turret Status (Soft Lock Only) ---
         if (robot.turret != null) {
             telemetry.addLine("=== TURRET ===");
-            telemetry.addData("Lock Mode", robot.turret.getLockMode());
+            telemetry.addData("Mode", "SOFT LOCK (fixed 0°)");
             telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
-            telemetry.addData("Target", String.format("%.1f°", robot.turret.getTargetAngle()));
-            
-            if (robot.turret.getLockMode() == Turret.LockMode.HARD_LOCK) {
-                telemetry.addData("TX Valid", robot.turret.hasValidTx() ? "YES (tracking)" : "NO (odometry)");
-                if (robot.turret.hasValidTx()) {
-                    telemetry.addData("Filtered TX", String.format("%.2f°", robot.turret.getFilteredTx()));
-                }
-                telemetry.addData("On Target", robot.turret.isOnTarget() ? "YES" : "NO");
-                telemetry.addData("Dist to Goal", String.format("%.1f in", robot.turret.getDistanceToGoal()));
-            }
         }
-        */
         
         // --- Shooter Status ---
         telemetry.addLine("=== SHOOTER ===");

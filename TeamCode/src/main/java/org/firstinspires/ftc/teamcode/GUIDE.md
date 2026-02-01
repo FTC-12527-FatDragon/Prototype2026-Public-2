@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-01
+> FTC Team 12527 | Last Updated: 2026-02-01 (TeleOp Split)
 
 ---
 
@@ -459,17 +459,40 @@ public class ExampleCommand extends CommandBase {
 
 ## 4. TeleOp Structure | 手动程序结构
 
-**Entry Point | 入口点**: `opmodes/teleops/TeleOp.java`
+### Available OpModes | 可用操作模式
+
+| OpMode | Name | Purpose | 用途 |
+|--------|------|---------|------|
+| `Solo.java` | "Solo" | **Chassis auto-aim**, turret fixed at 0° | **底盘自瞄**，云台固定0° |
+| `SoloBlue.java` | "Solo Blue" | **Turret auto-aim** for Blue alliance | **云台自瞄**，瞄蓝框 |
+| `SoloRed.java` | "Solo Red" | **Turret auto-aim** for Red alliance | **云台自瞄**，瞄红框 |
+
+### OpMode Comparison | 操作模式对比
+
+| Feature | Solo | SoloBlue | SoloRed |
+|---------|------|----------|---------|
+| **Turret Mode** | 🔒 Always SOFT_LOCK | Can toggle | Can toggle |
+| **A Button (Soft Lock)** | ✅ Chassis auto-aim | ✅ Chassis auto-aim | ✅ Chassis auto-aim |
+| **A Button (Hard Lock)** | ❌ N/A | ❌ Disabled | ❌ Disabled |
+| **Hard Lock Turret** | ❌ Not supported | ✅ Aim at blue (4,140) | ✅ Aim at red (140,140) |
+| **Alliance** | None | BLUE | RED |
+
+**Key Behavior | 关键行为:**
+- **Soft Lock + A Button** → Chassis rotates to aim at goal (turret stays at 0°)
+- **Hard Lock** → Turret auto-rotates to aim (chassis manual control only)
+
+**Entry Point | 入口点**: `opmodes/teleops/Solo.java` (or `SoloBlue.java`, `SoloRed.java`)
 
 ```
-TeleOp.java
+Solo.java / SoloBlue.java / SoloRed.java
     │
     ├── Robot.java (TeleOp Container - NOT for Auto!)
     │   ├── MecanumDrivePinpoint  ← Only in TeleOp | 仅手动模式
     │   ├── Shooter
     │   ├── Transit
     │   ├── Intake
-    │   └── Vision
+    │   ├── Vision (⚠️ disabled)
+    │   └── Turret (⚠️ disabled)
     │
     ├── DriverControls.bind() (Gamepad bindings | 手柄绑定)
     │
@@ -478,7 +501,7 @@ TeleOp.java
 
 ### Execution Flow | 执行流程
 
-1. `initialize()`: Create Robot, bind controls, register drive command
+1. `initialize()`: Create Robot, bind controls, register drive command, set turret alliance (Blue/Red only)
 2. `run()`: CommandScheduler executes all active commands + telemetry update
 
 ---
@@ -709,6 +732,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **Right Stick** | Turn | ✅ | 转向 | ✅ |
 | **Left Stick Button** | Reset heading | ✅ | 重置朝向 | ✅ |
 | **Right Stick Button** | Toggle turret lock | ❌ Disabled | 切换云台锁定 | ❌ 禁用 |
+| **A** | Chassis auto-aim (SOFT_LOCK only) | ⚠️ Disabled | 底盘自瞄（仅软锁） | ⚠️ 禁用 |
 | **LB** | Slow shot (700 TPS) | ✅ | 近射 | ✅ |
 | **RB** | Mid shot (950 TPS) | ✅ | 中射 | ✅ |
 | **RT** | Fast shot (1420 TPS) | ✅ | 远射 | ✅ |
@@ -717,6 +741,17 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **B** | Adaptive fire (Red) | ❌ Disabled | 自适应发射（红） | ❌ 禁用 |
 | **D-Pad Up** | Reverse intake | ✅ | 反转进球 | ✅ |
 | **D-Pad Down** | ~~Manual brake~~ | ❌ Removed | ~~手动刹车~~ | ❌ 已删除 |
+
+#### A Button Behavior | A 键行为
+
+| Mode | A Button Effect | A 键效果 |
+|------|-----------------|----------|
+| **SOFT_LOCK** | Chassis auto-aim (rotate to face goal) | 底盘自瞄（转向对准目标） |
+| **HARD_LOCK** | ❌ No effect (turret handles aiming) | ❌ 无效果（云台负责瞄准） |
+| **MANUAL** | ❌ No effect | ❌ 无效果 |
+
+> **Note**: A button triggers chassis auto-aim ONLY. Shoot buttons (LB/RB/RT) do NOT trigger auto-aim.
+> **注意**: A 键仅触发底盘自瞄。射击键不触发自瞄。
 
 #### Turret Lock Toggle | 云台锁定切换 (⚠️ DISABLED | 已禁用)
 
@@ -1017,7 +1052,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 
 ### TeleOp Telemetry | 手动遥测数据
 
-Available in `TeleOp.java`:
+Available in `Solo.java` / `SoloBlue.java` / `SoloRed.java`:
 
 | Data | Meaning | 含义 |
 |------|---------|------|

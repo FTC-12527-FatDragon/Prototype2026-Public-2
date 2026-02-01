@@ -106,16 +106,16 @@ public class SoloRed extends CommandOpMode {
             int currentTagId = robot.vision.getDetectedTagId();
             boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
             
-            // Update turret with tx (for HARD_LOCK tx tracking)
-            // Only use tx when seeing the RED basket tag (our target)
-            if (currentTagId == Vision.RED_GOAL_TAG_ID) {
-                robot.turret.updateTx(robot.vision.getTx(), true);
+            // Update turret with tx AND tagId (for HARD_LOCK tx tracking)
+            // TX tracking only activates when seeing RED tag (our target)
+            // If seeing BLUE tag, we still get position but use inertial to aim at red
+            if (isGoalTag) {
+                robot.turret.updateTx(robot.vision.getTx(), true, currentTagId);
             } else {
-                // Seeing blue tag or no tag - use odometry mode for turret
-                robot.turret.updateTx(0, false);
+                robot.turret.updateTx(0, false, -1);
             }
             
-            // Update turret with robot position (for HARD_LOCK odometry mode)
+            // Update turret with robot position (for HARD_LOCK inertial mode)
             if (robot.drive.hasAbsolutePosition()) {
                 robot.turret.updateRobotPosition(
                         robot.drive.getAbsoluteX(),

@@ -15,7 +15,7 @@ import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
  * SOFT LOCK mode: Chassis auto-aim enabled (turret fixed at 0°)
  * HARD LOCK mode: Chassis manual only (turret handles tracking)
  * 
- * Auto-aim triggers: A button OR any shoot button (LB/RB/RT)
+ * Auto-aim trigger: A button ONLY (not shoot buttons)
  */
 public class TeleOpDriveCommand extends CommandBase {
     private final MecanumDrivePinpoint drive;
@@ -87,10 +87,10 @@ public class TeleOpDriveCommand extends CommandBase {
             
             // Check button states
             boolean aPressed = gamepadEx.getButton(GamepadKeys.Button.A);
-            boolean shootPressed = isShootButtonPressed();
             
-            // Auto-aim triggers: A button OR any shoot button
-            boolean shouldAlign = aPressed || shootPressed;
+            // Auto-aim trigger: A button ONLY
+            // Shoot buttons do NOT trigger chassis auto-aim
+            boolean shouldAlign = aPressed;
             
             // D-Pad rotation input (always available)
             double dpadTurn = 0;

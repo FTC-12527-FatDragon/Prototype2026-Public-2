@@ -4,6 +4,44 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-01] - TeleOp Restructure & OpMode Split
+
+### Renamed
+- **TeleOp.java** → **Solo.java**
+    - Class name and file name changed
+    - Display name remains "Solo"
+
+### Added
+- **SoloBlue.java** - Alliance-specific TeleOp for Blue
+    - Sets `turret.setAlliance(Turret.Alliance.BLUE)`
+    - Hard Lock aims at blue basket (4, 140)
+    - TX tracking only when seeing tag 20
+    
+- **SoloRed.java** - Alliance-specific TeleOp for Red
+    - Sets `turret.setAlliance(Turret.Alliance.RED)`
+    - Hard Lock aims at red basket (140, 140)
+    - TX tracking only when seeing tag 24
+
+### Changed
+- **Chassis Auto-Aim Trigger** (`TeleOpDriveCommand.java`)
+    - Now triggered by **A button ONLY**
+    - Shoot buttons (LB/RB/RT) no longer trigger auto-aim
+    - Only works in SOFT_LOCK mode (disabled in HARD_LOCK)
+    
+- **Solo.java** - Simplified for chassis auto-aim
+    - Turret always in SOFT_LOCK (fixed at 0°)
+    - Chassis handles auto-aim via A button
+    - Removed all hard-lock related code
+    
+### OpMode Usage Guide
+| Match Type | OpMode |
+|------------|--------|
+| Practice/Testing | Solo |
+| Blue Alliance | SoloBlue |
+| Red Alliance | SoloRed |
+
+---
+
 ## [2026-02-01] - Turret Auto-Aim Logic Overhaul
 
 ### Added

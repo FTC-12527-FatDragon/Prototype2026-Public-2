@@ -211,29 +211,28 @@ public class DriverControls {
         // TURRET DISABLED
         /*
         // Toggle between Soft Lock and Hard Lock
-        // - Soft Lock: Hold turret at 0° (forward)
-        // - Hard Lock: Track goal position (only if seeing AprilTag 20 or 24)
+        // - Soft Lock: Hold turret at 0° (forward), chassis handles aiming
+        // - Hard Lock: Turret tracks goal (TX when seeing own tag, inertial otherwise)
         // Initial state: Soft Lock (set in TeleOp.initialize())
+        // 
+        // NOTE: Alliance is set by the OpMode (SoloBlue/SoloRed), NOT by which tag is seen!
+        // The turret will always aim at the alliance goal set by setAlliance().
+        // TX tracking only activates when seeing YOUR alliance's tag.
         new FunctionalButton(
                 () -> gamepad.getButton(GamepadKeys.Button.RIGHT_STICK_BUTTON)
         ).whenPressed(
                 new InstantCommand(() -> {
+                    // Cannot change modes during unwind
+                    if (robot.turret.isUnwinding()) {
+                        return;
+                    }
+                    
                     Turret.LockMode currentMode = robot.turret.getLockMode();
                     
                     if (currentMode == Turret.LockMode.SOFT_LOCK) {
-                        // Try to switch to Hard Lock
-                        int currentTag = robot.vision.getDetectedTagId();
-                        boolean isGoalTag = (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID);
-                        
-                        if (isGoalTag) {
-                            // Can switch to Hard Lock - determine which goal based on tag
-                            if (currentTag == Vision.BLUE_GOAL_TAG_ID) {
-                                robot.turret.enableHardLockBlue();
-                            } else {
-                                robot.turret.enableHardLockRed();
-                            }
-                        }
-                        // If no goal tag visible, stay in Soft Lock (do nothing)
+                        // Switch to Hard Lock (uses alliance set by OpMode)
+                        // No need to check tag - turret uses inertial if no tag visible
+                        robot.turret.enableHardLock();
                         
                     } else if (currentMode == Turret.LockMode.HARD_LOCK) {
                         // Switch back to Soft Lock
