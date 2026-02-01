@@ -4,6 +4,32 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-01] - DashTuner Encoder Safety Protection
+
+### Added
+- **Encoder Stuck Detection** (`DashTuner.java`)
+    - Monitors encoder readings during position closed-loop
+    - If motor outputs power >0.05 but encoder doesn't change for 0.5s → **EMERGENCY STOP**
+    - Motor is permanently disabled until reset
+    - Prevents motor/mechanism damage from disconnected or broken encoders
+
+- **Dashboard Configurable Parameters**
+    | Parameter | Default | Description |
+    |-----------|---------|-------------|
+    | `ENCODER_TIMEOUT` | 0.5s | Time without encoder change before triggering |
+    | `ENCODER_MIN_CHANGE` | 5 ticks | Minimum change to consider "moving" |
+    | `resetEncoderError` | false | Set to true to clear error and re-enable motors |
+
+### Error Display
+- FTC Dashboard: `!!! ENCODER ERROR [motor#] !!!`
+- Driver Station telemetry: Detailed error with last/current position
+
+### Recovery
+1. Dashboard: Set `resetEncoderError = true` (auto-resets to false)
+2. Or restart OpMode
+
+---
+
 ## [2026-02-01] - Pseudo Closed-loop Motor Braking
 
 ### Added

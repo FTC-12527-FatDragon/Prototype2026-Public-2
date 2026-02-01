@@ -76,3 +76,5 @@ public class AutoDriveCommand extends CommandBase {
         return !follower.isBusy() || timer.milliseconds() >= waitTime;
     }
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

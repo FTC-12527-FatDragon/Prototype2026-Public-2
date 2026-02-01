@@ -8,9 +8,7 @@ import org.firstinspires.ftc.teamcode.commands.TransitCommand;
 import org.firstinspires.ftc.teamcode.opmodes.teleops.TeleOpConstants;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
-import org.firstinspires.ftc.teamcode.subsystems.shooter.ShooterConstants;
 import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
-import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
 
 /**
@@ -18,11 +16,6 @@ import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
  * Centralizes the gamepad button bindings for the robot.
  */
 public class DriverControls {
-    
-    // Cached adaptive values (calculated once on press, used every frame while held)
-    private static double cachedAdaptiveVelocity = 0;
-    private static double cachedAdaptiveServoPos = -1;
-    private static boolean adaptiveCalculated = false;
 
     /**
      * Binds the gamepad controls to the robot commands.
@@ -99,114 +92,6 @@ public class DriverControls {
                 new InstantCommand(() -> robot.intake.setFullPower(false))
         );
         
-        // ==================== ADAPTIVE FIRE (X = Blue Goal, B = Red Goal) ====================
-        // TEMPORARILY DISABLED - Uncomment to enable adaptive shooting
-        /*
-        // X Button: Calculate distance to BLUE goal (tag 20), set adaptive velocity/servo, fire
-        // B Button: Calculate distance to RED goal (tag 24), set adaptive velocity/servo, fire
-        // NOTE: Adaptive shooting ONLY works when a Goal Tag (ID 20 or 24) is visible!
-        
-        // X Button - BLUE Goal (only if seeing Goal Tag)
-        // Calculate ONCE when pressed, apply every frame while held
-        new FunctionalButton(
-                () -> gamepad.getButton(GamepadKeys.Button.X)
-        ).whenPressed(
-                // Calculate only once when button is first pressed
-                new InstantCommand(() -> {
-                    int currentTag = robot.vision.getDetectedTagId();
-                    boolean isGoalTag = (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID);
-                    
-                    if (isGoalTag) {
-                        // Calculate and cache adaptive values (only once!)
-                        cachedAdaptiveVelocity = robot.drive.calculateAdaptiveVelocity(Vision.BLUE_GOAL_TAG_ID);
-                        cachedAdaptiveServoPos = robot.drive.calculateAdaptiveServoPosition(Vision.BLUE_GOAL_TAG_ID);
-                        adaptiveCalculated = true;
-                    } else {
-                        adaptiveCalculated = false;
-                    }
-                })
-        ).whenHeld(
-                // Apply cached values every frame while held
-                new InstantCommand(() -> {
-                    if (adaptiveCalculated) {
-                        isAuto[0] = true;  // Disable chassis during adaptive shooting
-                        robot.drive.stop();  // Stop chassis immediately
-                        // NOTE: Brake servo has been removed from codebase
-                        robot.shooter.setAdaptiveVelocity(cachedAdaptiveVelocity);
-                        robot.shooter.setAdaptiveServoPosition(cachedAdaptiveServoPos);
-                    }
-                })
-        ).whenReleased(
-                new InstantCommand(() -> {
-                    isAuto[0] = false;  // Re-enable chassis
-                    adaptiveCalculated = false;  // Reset flag
-                    robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    // NOTE: Brake servo has been removed from codebase
-                })
-        );
-        
-        // Fire when X is held (only if seeing Goal Tag)
-        new FunctionalButton(
-                () -> {
-                    if (!gamepad.getButton(GamepadKeys.Button.X)) return false;
-                    int currentTag = robot.vision.getDetectedTagId();
-                    return (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID);
-                }
-        ).whenHeld(
-                new TransitCommand(robot.transit, robot.shooter)
-        );
-        
-        // B Button - RED Goal (only if seeing Goal Tag)
-        // Calculate ONCE when pressed, apply every frame while held
-        new FunctionalButton(
-                () -> gamepad.getButton(GamepadKeys.Button.B)
-        ).whenPressed(
-                // Calculate only once when button is first pressed
-                new InstantCommand(() -> {
-                    int currentTag = robot.vision.getDetectedTagId();
-                    boolean isGoalTag = (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID);
-                    
-                    if (isGoalTag) {
-                        // Calculate and cache adaptive values (only once!)
-                        cachedAdaptiveVelocity = robot.drive.calculateAdaptiveVelocity(Vision.RED_GOAL_TAG_ID);
-                        cachedAdaptiveServoPos = robot.drive.calculateAdaptiveServoPosition(Vision.RED_GOAL_TAG_ID);
-                        adaptiveCalculated = true;
-                    } else {
-                        adaptiveCalculated = false;
-                    }
-                })
-        ).whenHeld(
-                // Apply cached values every frame while held
-                new InstantCommand(() -> {
-                    if (adaptiveCalculated) {
-                        isAuto[0] = true;  // Disable chassis during adaptive shooting
-                        robot.drive.stop();  // Stop chassis immediately
-                        // NOTE: Brake servo has been removed from codebase
-                        robot.shooter.setAdaptiveVelocity(cachedAdaptiveVelocity);
-                        robot.shooter.setAdaptiveServoPosition(cachedAdaptiveServoPos);
-                    }
-                })
-        ).whenReleased(
-                new InstantCommand(() -> {
-                    isAuto[0] = false;  // Re-enable chassis
-                    adaptiveCalculated = false;  // Reset flag
-                    robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    // NOTE: Brake servo has been removed from codebase
-                })
-        );
-        
-        // Fire when B is held (only if seeing Goal Tag)
-        new FunctionalButton(
-                () -> {
-                    if (!gamepad.getButton(GamepadKeys.Button.B)) return false;
-                    int currentTag = robot.vision.getDetectedTagId();
-                    return (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID);
-                }
-        ).whenHeld(
-                new TransitCommand(robot.transit, robot.shooter)
-        );
-        */
-        
         // ==================== TURRET LOCK MODE (Right Stick Button) ====================
         // TURRET DISABLED
         /*
@@ -247,3 +132,5 @@ public class DriverControls {
     }
 }
 
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

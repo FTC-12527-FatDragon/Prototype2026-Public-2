@@ -14,3 +14,5 @@ public class TransitConstants {
     public static double limitOpenPos = 0.6;     // Open
     public static double limitClosedPos = 0.3;   // Closed
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

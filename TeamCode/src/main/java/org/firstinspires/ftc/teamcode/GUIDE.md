@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-01 (TeleOp Split)
+> FTC Team 12527 | Last Updated: 2026-02-01 (DashTuner Safety)
 
 ---
 
@@ -715,6 +715,7 @@ All `@Config` annotated classes can be tuned in real-time:
 | OpMode | Purpose | 用途 |
 |--------|---------|------|
 | `Drive Only Test` | Drivetrain-only test (4 motors + Pinpoint) | 仅底盘测试 |
+| `DashTuner` | PIDF tuning with encoder safety | PIDF调参 + 编码器保护 |
 | `Tuning` | Comprehensive tuning for all subsystems | 全子系统综合调参 |
 
 #### Drive Only Test
@@ -727,6 +728,46 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 - Left Stick: Move (field-centric) | 移动（场地相对）
 - Right Stick: Turn | 旋转
 - Left Stick Click: Reset heading | 重置朝向
+
+#### DashTuner
+
+General-purpose PIDF tuning OpMode via FTC Dashboard. Supports up to 4 motors and 4 servos simultaneously.
+
+通用 PIDF 调参程序，通过 FTC Dashboard 控制。支持同时调试最多 4 个电机和 4 个舵机。
+
+**Dashboard Parameters | Dashboard 参数**:
+| Parameter | Type | Description | 说明 |
+|-----------|------|-------------|------|
+| `motorName[0-3]` | String | Motor config names | 电机配置名 |
+| `servoName[0-3]` | String | Servo config names | 舵机配置名 |
+| `closeLoop[0-3]` | boolean | Enable PIDF | 启用闭环 |
+| `isVelocityCloseLoop[0-3]` | boolean | Velocity (true) or Position (false) | 速度/位置闭环 |
+| `motorTarget[0-3]` | double | Target velocity (TPS) or position (ticks) | 目标速度/位置 |
+| `servoTarget[0-3]` | double | Servo position 0-1 | 舵机位置 |
+| `PIDFs[0-3].kP/kI/kD/kF` | double | PIDF coefficients | PIDF 系数 |
+
+**🛡️ Encoder Safety Protection | 编码器安全保护**:
+
+Position closed-loop mode includes automatic encoder stuck detection:
+
+位置闭环模式包含自动编码器卡死检测：
+
+| Parameter | Default | Description | 说明 |
+|-----------|---------|-------------|------|
+| `ENCODER_TIMEOUT` | 0.5s | Time before triggering | 触发前等待时间 |
+| `ENCODER_MIN_CHANGE` | 5 ticks | Minimum expected change | 最小变化阈值 |
+| `resetEncoderError` | false | Set true to clear error | 设为 true 清除错误 |
+
+**Protection Behavior | 保护行为**:
+1. Motor outputs power > 0.05 (trying to move) | 电机输出功率 > 0.05（尝试运动）
+2. Encoder change < 5 ticks for 0.5 seconds | 编码器变化 < 5 ticks 持续 0.5 秒
+3. **EMERGENCY STOP** - Motor disabled until reset | **紧急停止** - 电机禁用直到重置
+4. Dashboard shows: `!!! ENCODER ERROR !!!` | Dashboard 显示错误
+5. Reset: Set `resetEncoderError = true` or restart OpMode | 重置方法
+
+> ⚠️ **Why this matters | 为什么重要**: If encoder is disconnected/broken but PIDF keeps outputting power, motor could overheat or damage mechanism. This protection prevents that.
+> 
+> 如果编码器断开/损坏但 PIDF 持续输出功率，电机可能过热或损坏机构。此保护可防止这种情况。
 
 ---
 

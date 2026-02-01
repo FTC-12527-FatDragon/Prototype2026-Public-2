@@ -68,6 +68,16 @@ public class DashTuner extends LinearOpMode {
             new PIDFController(0, 0, 0, 0),
             new PIDFController(0, 0, 0, 0)
     };
+    
+    // ==================== ENCODER SAFETY PROTECTION ====================
+    // If encoder doesn't change for 0.5s while motor is running, STOP!
+    public static double ENCODER_TIMEOUT = 0.5;  // seconds
+    public static double ENCODER_MIN_CHANGE = 5;  // minimum encoder change to be considered "moving"
+    public static boolean resetEncoderError = false;  // Set to true in Dashboard to reset encoder errors
+    
+    private double[] lastEncoderPos = new double[4];
+    private double[] encoderStuckStartTime = new double[4];
+    private boolean[] encoderStuckDetected = new boolean[4];
 
     public static String colorSensorName = "";
 
@@ -111,8 +121,31 @@ public class DashTuner extends LinearOpMode {
         }
 
         waitForStart();
+        
+        // Initialize encoder positions to prevent false positives on first loop
+        for (int i = 0; i < 4; i++) {
+            if (motors[i] != null) {
+                lastEncoderPos[i] = motors[i].getCurrentPosition();
+            }
+            encoderStuckStartTime[i] = 0;
+            encoderStuckDetected[i] = false;
+        }
 
         while (opModeIsActive()) {
+            // Check for encoder error reset request from Dashboard
+            if (resetEncoderError) {
+                for (int i = 0; i < 4; i++) {
+                    encoderStuckDetected[i] = false;
+                    encoderStuckStartTime[i] = 0;
+                    if (motors[i] != null) {
+                        lastEncoderPos[i] = motors[i].getCurrentPosition();
+                    }
+                }
+                resetEncoderError = false;
+                telemetry.addLine("Encoder errors cleared!");
+                telemetry.update();
+            }
+            
             for (int i = 0; i < 4; i++) {
                 if (!motorName[i].isEmpty()) {
                     if (slaveTo[i] != -1) {
@@ -143,13 +176,62 @@ public class DashTuner extends LinearOpMode {
 
                         double pos = motors[i].getCurrentPosition();
                         double v = motors[i].getVelocity();  // Get velocity for TPS
-
-                        motors[i].setPower(pidfControllers[i].calculate(pos, motorTarget[i]));
+                        double currentTime = getRuntime();
+                        
+                        // ===== ENCODER SAFETY CHECK =====
+                        // If encoder hasn't changed for ENCODER_TIMEOUT seconds, STOP!
+                        double encoderChange = Math.abs(pos - lastEncoderPos[i]);
+                        double power = pidfControllers[i].calculate(pos, motorTarget[i]);
+                        
+                        if (Math.abs(power) > 0.05) {  // Motor is trying to move
+                            if (encoderChange < ENCODER_MIN_CHANGE) {
+                                // Encoder not changing
+                                if (encoderStuckStartTime[i] == 0) {
+                                    encoderStuckStartTime[i] = currentTime;
+                                } else if (currentTime - encoderStuckStartTime[i] > ENCODER_TIMEOUT) {
+                                    // ENCODER STUCK! EMERGENCY STOP!
+                                    encoderStuckDetected[i] = true;
+                                    motors[i].setPower(0);
+                                    
+                                    TelemetryPacket errorPacket = new TelemetryPacket();
+                                    errorPacket.put("!!! ENCODER ERROR " + i + " !!!", "STOPPED - No encoder change for " + ENCODER_TIMEOUT + "s");
+                                    errorPacket.put("Motor " + i + " DISABLED", true);
+                                    dashboard.sendTelemetryPacket(errorPacket);
+                                    
+                                    telemetry.addLine("!!! ENCODER " + i + " STUCK !!!");
+                                    telemetry.addLine("Motor stopped for safety!");
+                                    telemetry.addData("Last Position", lastEncoderPos[i]);
+                                    telemetry.addData("Current Position", pos);
+                                    telemetry.update();
+                                    continue;  // Skip this motor
+                                }
+                            } else {
+                                // Encoder is changing, reset timer
+                                encoderStuckStartTime[i] = 0;
+                            }
+                        } else {
+                            // Motor not trying to move, reset timer
+                            encoderStuckStartTime[i] = 0;
+                        }
+                        
+                        lastEncoderPos[i] = pos;
+                        
+                        // If encoder stuck was detected, keep motor stopped
+                        if (encoderStuckDetected[i]) {
+                            motors[i].setPower(0);
+                            TelemetryPacket errorPacket = new TelemetryPacket();
+                            errorPacket.put("Motor " + i + " DISABLED", "Encoder error - restart OpMode to reset");
+                            dashboard.sendTelemetryPacket(errorPacket);
+                            continue;
+                        }
+                        
+                        motors[i].setPower(power);
 
                         TelemetryPacket packet = new TelemetryPacket();
                         packet.put("targetPosition " + i, motorTarget[i]);
                         packet.put("currentPosition " + i, pos);
                         packet.put("TPS " + i, v);  // Ticks Per Second
+                        packet.put("encoderOK " + i, !encoderStuckDetected[i]);
 
                         dashboard.sendTelemetryPacket(packet);
                     }
@@ -230,3 +312,5 @@ public class DashTuner extends LinearOpMode {
         }
     }
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

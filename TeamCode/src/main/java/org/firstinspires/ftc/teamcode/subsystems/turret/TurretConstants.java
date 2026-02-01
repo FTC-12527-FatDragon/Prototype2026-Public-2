@@ -30,8 +30,8 @@ public class TurretConstants {
     public static double GEAR_RATIO = 116.0 / 22.0;  // Motor rotations : Turret rotations
     
     // Angle offset: encoder 0° corresponds to this turret angle
-    // If encoder reads 0° when turret faces right (90°), set this to 90.0
-    public static double ANGLE_OFFSET = 90.0;   // degrees
+    // If encoder reads 0° when turret faces forward (0°), set this to 0.0
+    public static double ANGLE_OFFSET = 0.0;   // degrees
     
     // Angle limits (degrees, 0 = forward)
     // Positive = clockwise (right), Negative = counterclockwise (left)
@@ -89,3 +89,5 @@ public class TurretConstants {
 }
 
 
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

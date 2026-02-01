@@ -82,3 +82,5 @@ public class AutoConstants {
     public static final Pose BLUE_PARK_POSE = new Pose(60, 96, toRadians(90)); // Approximate park
     public static final Pose RED_PARK_POSE = new Pose(84, 96, toRadians(90));
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

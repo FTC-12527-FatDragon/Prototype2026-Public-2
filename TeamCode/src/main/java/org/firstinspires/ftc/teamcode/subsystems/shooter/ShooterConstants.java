@@ -91,3 +91,5 @@ public class ShooterConstants {
     // Auto-fire threshold (degrees)
     public static double autoFireTxThreshold = 1.0;  // Allow fire when |tx| < this
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

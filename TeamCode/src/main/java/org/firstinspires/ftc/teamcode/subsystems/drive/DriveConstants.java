@@ -57,11 +57,13 @@ public class DriveConstants {
     public static double dpadTurnSpeed = 0.3;
     
     // ==================== AUTO-AIM TARGET COORDINATES ====================
-    // Goal positions for auto-aim (in inches)
-    // Blue goal: (0, 144)
-    // Red goal: (144, 144)
-    public static double blueGoalX = 0;
-    public static double blueGoalY = 144;
-    public static double redGoalX = 144;
-    public static double redGoalY = 144;
+    // Goal positions for auto-aim (in inches) - BASKET CENTER
+    // Blue basket: (4, 140)
+    // Red basket: (140, 140)
+    public static double blueGoalX = 4;
+    public static double blueGoalY = 140;
+    public static double redGoalX = 140;
+    public static double redGoalY = 140;
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

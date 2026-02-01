@@ -123,3 +123,5 @@ public abstract class AutoCommandBase extends LinearOpMode {
      */
     public void onAutoStopped() {}
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

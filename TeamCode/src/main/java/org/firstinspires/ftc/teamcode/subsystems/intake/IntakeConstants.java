@@ -30,3 +30,5 @@ public class IntakeConstants {
     // Power to apply when jamming is detected to clear or protect motor
     public static double jammingPower = 0.5;
 }
+
+// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.
