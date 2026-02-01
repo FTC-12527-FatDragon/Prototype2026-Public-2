@@ -33,12 +33,19 @@ import org.firstinspires.ftc.teamcode.subsystems.Robot;
 public class SoloRed extends CommandOpMode {
     private Robot robot;
     private GamepadEx gamepadEx1;
+    private GamepadEx gamepadEx2;  // Secondary gamepad for emergency controls
     private boolean[] isAuto = {false};
+    
+    // Edge detection for gamepad2 emergency disable combos
+    private boolean lastIntakeDisableCombo = false;   // LT + LB
+    private boolean lastShooterDisableCombo = false;  // RT + RB
+    private boolean lastTurretDisableCombo = false;   // LB + RB
 
     @Override
     public void initialize() {
         robot = new Robot(hardwareMap);
         gamepadEx1 = new GamepadEx(gamepad1);
+        gamepadEx2 = new GamepadEx(gamepad2);  // Secondary gamepad for emergency controls
 
         // Register subsystems
         CommandScheduler.getInstance().registerSubsystem(robot.shooter);
@@ -82,6 +89,32 @@ public class SoloRed extends CommandOpMode {
     @Override
     public void run() {
         CommandScheduler.getInstance().run();
+        
+        // ========== GAMEPAD2 EMERGENCY DISABLE CONTROLS ==========
+        // Read current combo states
+        boolean intakeDisableCombo = gamepadEx2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > 0.3 
+                && gamepadEx2.getButton(GamepadKeys.Button.LEFT_BUMPER);
+        boolean shooterDisableCombo = gamepadEx2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > 0.3 
+                && gamepadEx2.getButton(GamepadKeys.Button.RIGHT_BUMPER);
+        boolean turretDisableCombo = gamepadEx2.getButton(GamepadKeys.Button.LEFT_BUMPER) 
+                && gamepadEx2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
+                && !intakeDisableCombo && !shooterDisableCombo;  // Avoid conflict with other combos
+        
+        // Edge detection: toggle on rising edge (just pressed)
+        if (intakeDisableCombo && !lastIntakeDisableCombo) {
+            robot.intake.toggleDisabled();
+        }
+        if (shooterDisableCombo && !lastShooterDisableCombo) {
+            robot.shooter.toggleDisabled();
+        }
+        if (turretDisableCombo && !lastTurretDisableCombo && robot.turret != null) {
+            robot.turret.toggleDisabled();
+        }
+        
+        // Update last combo states for next frame
+        lastIntakeDisableCombo = intakeDisableCombo;
+        lastShooterDisableCombo = shooterDisableCombo;
+        lastTurretDisableCombo = turretDisableCombo;
         
         // --- Update Absolute Position & Turret ---
         // TURRET/VISION DISABLED - Uncomment when ready
@@ -160,6 +193,15 @@ public class SoloRed extends CommandOpMode {
             telemetry.addData("Lock Mode", robot.turret.getLockMode());
             telemetry.addData("Unwinding", robot.turret.isUnwinding() ? "YES" : "NO");
         }
+        
+        // --- Emergency Disable Status (Gamepad2) ---
+        telemetry.addLine("=== EMERGENCY DISABLE (GP2) ===");
+        telemetry.addData("Intake", robot.intake.isDisabled() ? "DISABLED" : "OK");
+        telemetry.addData("Shooter", robot.shooter.isDisabled() ? "DISABLED" : "OK");
+        if (robot.turret != null) {
+            telemetry.addData("Turret", robot.turret.isDisabled() ? "DISABLED" : "OK");
+        }
+        telemetry.addLine("GP2: LT+LB=Intake | RT+RB=Shooter | LB+RB=Turret");
         
         telemetry.update();
 

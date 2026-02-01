@@ -22,6 +22,9 @@ public class Intake extends SubsystemBase {
     public static boolean isReversed = false;
     public static boolean isFastShooting = false; // For FAST shooting mode in auto
     public static boolean isFastIntaking = false;
+    
+    // Emergency disable flag (controlled by gamepad2)
+    private boolean disabled = false;
 
     /**
      * Constructor for Intake.
@@ -111,6 +114,32 @@ public class Intake extends SubsystemBase {
     public void setFastShooting(boolean fastShooting) {
         isFastShooting = fastShooting;
     }
+    
+    /**
+     * Sets the emergency disable flag.
+     * When disabled, the intake motor will be set to 0 power.
+     * Controlled by gamepad2 (LT + LB to toggle).
+     *
+     * @param disabled True to disable intake.
+     */
+    public void setDisabled(boolean disabled) {
+        this.disabled = disabled;
+    }
+    
+    /**
+     * Checks if the intake is disabled.
+     * @return True if disabled.
+     */
+    public boolean isDisabled() {
+        return disabled;
+    }
+    
+    /**
+     * Toggles the disabled state.
+     */
+    public void toggleDisabled() {
+        disabled = !disabled;
+    }
 
     /**
      * Gets the current velocity of the intake motor.
@@ -127,6 +156,12 @@ public class Intake extends SubsystemBase {
      */
     @Override
     public void periodic() {
+        // Emergency disable check - highest priority
+        if (disabled) {
+            intakeMotor.setPower(0);
+            return;
+        }
+        
         if (isRunning) {
             double targetPower;
 

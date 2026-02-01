@@ -6,6 +6,7 @@ import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.arcrobotics.ftclib.command.SubsystemBase;
 import com.arcrobotics.ftclib.controller.PIDController;
+import com.arcrobotics.ftclib.controller.PIDFController;
 import com.arcrobotics.ftclib.hardware.motors.Motor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -26,8 +27,15 @@ public class Shooter extends SubsystemBase {
     // PID Controller (Currently unused, replaced by Bang-Bang/Feedforward)
     public final PIDController pidController;
     
+    // ==================== TRUE PIDF VELOCITY CONTROL ====================
+    // Uncomment the PIDF section in periodic() to use this instead of Bang-Bang
+    public final PIDFController velocityPIDF;
+    
     // Current state of the shooter
     public ShooterState shooterState = ShooterState.STOP;
+    
+    // Emergency disable flag (controlled by gamepad2)
+    private boolean disabled = false;
 
     /**
      * Constructor for Shooter.
@@ -41,6 +49,14 @@ public class Shooter extends SubsystemBase {
         shooterServo = hardwareMap.get(Servo.class, ShooterConstants.shooterServoName);
         pidController = new PIDController(ShooterConstants.kP,
                 ShooterConstants.kI, ShooterConstants.kD);
+        
+        // Initialize PIDF controller for true velocity closed-loop
+        velocityPIDF = new PIDFController(
+                ShooterConstants.kP,
+                ShooterConstants.kI,
+                ShooterConstants.kD,
+                ShooterConstants.kF
+        );
     }
 
     /**
@@ -108,6 +124,32 @@ public class Shooter extends SubsystemBase {
     public double getAdaptiveServoPosition() {
         return adaptiveServoPosition;
     }
+    
+    /**
+     * Sets the emergency disable flag.
+     * When disabled, the shooter motors will be set to 0 power.
+     * Controlled by gamepad2 (RT + RB to toggle).
+     *
+     * @param disabled True to disable shooter.
+     */
+    public void setDisabled(boolean disabled) {
+        this.disabled = disabled;
+    }
+    
+    /**
+     * Checks if the shooter is disabled.
+     * @return True if disabled.
+     */
+    public boolean isDisabled() {
+        return disabled;
+    }
+    
+    /**
+     * Toggles the disabled state.
+     */
+    public void toggleDisabled() {
+        disabled = !disabled;
+    }
 
     /**
      * Gets the current velocity of the right shooter motor.
@@ -155,9 +197,18 @@ public class Shooter extends SubsystemBase {
      * Periodic update method.
      * Implements Bang-Bang control with Feedforward for velocity regulation.
      * STOP state uses open-loop idle power (no PID).
+     * 
+     * Alternative: TRUE PIDF VELOCITY CONTROL (commented out below)
      */
     @Override
     public void periodic() {
+        // Emergency disable check - highest priority
+        if (disabled) {
+            leftShooter.setPower(0);
+            rightShooter.setPower(0);
+            return;
+        }
+        
         // Control loop runs always (even in STOP state) to maintain idle speed if set
         // leftShooter runs positive, but target velocities are negative, so negate
         double currentVel = -leftShooter.getVelocity();
@@ -167,9 +218,9 @@ public class Shooter extends SubsystemBase {
         double power;
 
         // =================================================================
-        // Motor Power Control
-        // STOP state (without adaptive velocity): Open-loop idle power (0.27), no PID control
-        // Other states or adaptive velocity: Bang-Bang control with feedforward
+        // OPTION 1: BANG-BANG CONTROL (Current Implementation)
+        // Pros: Fast acceleration, simple
+        // Cons: Not smooth, no fine control
         // =================================================================
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
             // Idle mode: Use fixed open-loop power, no closed-loop control
@@ -189,6 +240,40 @@ public class Shooter extends SubsystemBase {
                 power = Math.abs(targetVel) / ShooterConstants.maxVelocityTPS;
             }
         }
+        
+        // =================================================================
+        // OPTION 2: TRUE PIDF VELOCITY CONTROL (Uncomment to use)
+        // Pros: Smooth, precise velocity control
+        // Cons: Requires tuning kP, kI, kD, kF
+        // 
+        // To switch: Comment out OPTION 1 above, uncomment below
+        // =================================================================
+        /*
+        // Update PIDF coefficients from constants (allows Dashboard tuning)
+        velocityPIDF.setPIDF(
+                ShooterConstants.kP,
+                ShooterConstants.kI,
+                ShooterConstants.kD,
+                ShooterConstants.kF
+        );
+        
+        if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
+            // Idle mode: Use fixed open-loop power, no closed-loop control
+            power = ShooterConstants.idlePower;
+            velocityPIDF.reset();  // Reset integrator when idle
+        } else {
+            // PIDF Velocity Control
+            // Note: currentVel and targetVel are both negative
+            // PIDF calculates: error = setpoint - measurement = targetVel - currentVel
+            // Output = kP*error + kI*integral + kD*derivative + kF*setpoint
+            
+            // Calculate PIDF output
+            double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
+            
+            // Clamp output to [0, 1] (shooter only runs one direction)
+            power = Math.max(0, Math.min(1, pidfOutput));
+        }
+        */
 
         // Apply power
         // leftShooter runs positive, rightShooter runs negative

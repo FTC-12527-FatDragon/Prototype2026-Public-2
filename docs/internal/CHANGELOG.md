@@ -4,6 +4,34 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-01] - Gamepad2 Emergency Disable System
+
+### Added
+- **Emergency Disable Feature** for all major subsystems
+    - `Intake.java`: Added `disabled` flag, `setDisabled()`, `isDisabled()`, `toggleDisabled()`
+    - `Shooter.java`: Added `disabled` flag, `setDisabled()`, `isDisabled()`, `toggleDisabled()`
+    - `Turret.java`: Added `disabled` flag, `setDisabled()`, `isDisabled()`, `toggleDisabled()`
+    - When disabled: `periodic()` immediately sets motor power to 0 and returns
+    
+- **Gamepad2 Controls** in `Solo.java`, `SoloBlue.java`, `SoloRed.java`
+    - Secondary gamepad (`gamepadEx2`) for emergency control
+    - Edge detection to prevent continuous toggling
+    - Telemetry display of disable status
+
+### Control Mapping (Gamepad2)
+| Combo | Target | Effect |
+|-------|--------|--------|
+| **LT + LB** | Intake | Toggle disable (motor → 0) |
+| **RT + RB** | Shooter | Toggle disable (motors → 0) |
+| **LB + RB** | Turret | Toggle disable (motor → 0) |
+
+### Usage
+1. Press combo once → subsystem disabled (will not respond to any commands)
+2. Press combo again → subsystem re-enabled
+3. Check telemetry: `=== EMERGENCY DISABLE (GP2) ===` shows OK/DISABLED
+
+---
+
 ## [2026-02-01] - TeleOp Restructure & OpMode Split
 
 ### Renamed

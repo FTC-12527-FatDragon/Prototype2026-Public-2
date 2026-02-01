@@ -16,10 +16,14 @@ public class ShooterConstants {
     // Increased from 20 to 100 for more reliable firing
     public static double shooterEpsilon = 100;
 
-    // PID Coefficients (Currently unused for main control loop)
-    public static double kP = 0.5;
-    public static double kI = 0;
-    public static double kD = 0;
+    // ==================== PIDF VELOCITY CONTROL (for true closed-loop) ====================
+    // Currently unused - using Bang-Bang with feedforward instead
+    // Uncomment in Shooter.java to enable PIDF control
+    public static double kP = 0.0005;   // Start small for velocity control
+    public static double kI = 0.0;      // Usually keep at 0
+    public static double kD = 0.0;      // Add if oscillating
+    public static double kF = 0.0004;   // Feedforward: kF * targetVelocity added to output
+    // Note: For velocity control, kF ≈ 1/maxVelocityTPS ≈ 1/2800 ≈ 0.00036
 
     // Theoretical Max TPS for Feedforward Calculation
     // GoBilda 6000RPM Motor (5203-2402-0001): 28 ticks/revolution

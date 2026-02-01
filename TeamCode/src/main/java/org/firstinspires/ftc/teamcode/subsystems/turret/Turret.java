@@ -90,6 +90,9 @@ public class Turret extends SubsystemBase {
     
     // Calibration state
     private boolean isCalibrated = false;
+    
+    // Emergency disable flag (controlled by gamepad2)
+    private boolean disabled = false;
 
     /**
      * Constructor for Turret.
@@ -237,6 +240,32 @@ public class Turret extends SubsystemBase {
      */
     public boolean isCalibrated() {
         return isCalibrated;
+    }
+    
+    /**
+     * Sets the emergency disable flag.
+     * When disabled, the turret motor will be set to 0 power.
+     * Controlled by gamepad2 (LB + RB to toggle).
+     *
+     * @param disabled True to disable turret.
+     */
+    public void setDisabled(boolean disabled) {
+        this.disabled = disabled;
+    }
+    
+    /**
+     * Checks if the turret is disabled.
+     * @return True if disabled.
+     */
+    public boolean isDisabled() {
+        return disabled;
+    }
+    
+    /**
+     * Toggles the disabled state.
+     */
+    public void toggleDisabled() {
+        disabled = !disabled;
     }
 
     // ==================== GEOMETRY METHODS ====================
@@ -739,6 +768,12 @@ public class Turret extends SubsystemBase {
      */
     @Override
     public void periodic() {
+        // Emergency disable check - highest priority
+        if (disabled) {
+            turretMotor.setPower(0);
+            return;
+        }
+        
         double outputPower = 0;
         double currentAngle = getAngleDegrees();
         

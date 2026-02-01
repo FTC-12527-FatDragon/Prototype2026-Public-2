@@ -724,7 +724,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 
 ## 8. Control Mapping | 手柄映射
 
-### Driver Controller | 主手柄
+### Driver Controller (Gamepad1) | 主手柄
 
 | Button | Function | Status | 功能 | 状态 |
 |--------|----------|--------|------|------|
@@ -741,6 +741,20 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **B** | Adaptive fire (Red) | ❌ Disabled | 自适应发射（红） | ❌ 禁用 |
 | **D-Pad Up** | Reverse intake | ✅ | 反转进球 | ✅ |
 | **D-Pad Down** | ~~Manual brake~~ | ❌ Removed | ~~手动刹车~~ | ❌ 已删除 |
+
+### Secondary Controller (Gamepad2) - Emergency Disable | 副手柄 - 紧急禁用
+
+| Combo | Function | 功能 |
+|-------|----------|------|
+| **LT + LB** | Toggle Intake disable | 切换 Intake 禁用 |
+| **RT + RB** | Toggle Shooter disable | 切换 Shooter 禁用 |
+| **LB + RB** | Toggle Turret disable | 切换云台禁用 |
+
+> **Usage | 使用方法**: Press combo once to disable subsystem (motor power → 0). Press again to re-enable.
+> 按一次组合键禁用子系统（电机功率→0），再按一次恢复。
+
+> **Telemetry | 遥测显示**: Check `=== EMERGENCY DISABLE (GP2) ===` section for status (OK / DISABLED).
+> 查看 telemetry 中的紧急禁用状态区域确认各子系统状态。
 
 #### A Button Behavior | A 键行为
 
