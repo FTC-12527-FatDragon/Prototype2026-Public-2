@@ -607,6 +607,53 @@ public class Turret extends SubsystemBase {
     }
 
     /**
+     * Calculates the TX offset needed to aim at the basket instead of the AprilTag.
+     * 
+     * When using TX tracking, tx = 0 means the turret is pointing at the AprilTag.
+     * But we want to aim at the basket center, which is offset from the tag.
+     * This method calculates the angle difference so that:
+     *   targetTx = txOffset  (instead of 0)
+     * 
+     * @return TX offset in degrees (positive = basket is to the right of tag)
+     */
+    public double calculateTxOffsetToBasket() {
+        // Get tag and goal positions based on alliance
+        double tagX, tagY, goalX, goalY;
+        if (currentAlliance == Alliance.BLUE) {
+            tagX = TurretConstants.blueTagX;
+            tagY = TurretConstants.blueTagY;
+            goalX = TurretConstants.blueGoalX;
+            goalY = TurretConstants.blueGoalY;
+        } else {
+            tagX = TurretConstants.redTagX;
+            tagY = TurretConstants.redTagY;
+            goalX = TurretConstants.redGoalX;
+            goalY = TurretConstants.redGoalY;
+        }
+        
+        // Calculate angles from robot position to tag and to goal
+        double dxTag = tagX - robotX;
+        double dyTag = tagY - robotY;
+        double dxGoal = goalX - robotX;
+        double dyGoal = goalY - robotY;
+        
+        // Angle to tag and goal in field coordinates
+        // Using atan2(dx, dy) because Y is forward in our coordinate system
+        double angleToTag = Math.toDegrees(Math.atan2(dxTag, dyTag));
+        double angleToGoal = Math.toDegrees(Math.atan2(dxGoal, dyGoal));
+        
+        // TX offset = how much we need to rotate from tag to basket
+        // Positive offset means basket is to the right of tag (from robot's view)
+        double txOffset = angleToGoal - angleToTag;
+        
+        // Normalize to [-180, 180]
+        while (txOffset > 180) txOffset -= 360;
+        while (txOffset < -180) txOffset += 360;
+        
+        return txOffset;
+    }
+    
+    /**
      * Calculates the turret angle needed to aim at the goal.
      * 
      * Coordinate System:
@@ -860,9 +907,11 @@ public class Turret extends SubsystemBase {
                     
                     if (canUseTxTracking) {
                         // ===== TX TRACKING MODE =====
-                        // Use current angle + tx correction to center the target
-                        // This is the most accurate mode when we see our own goal tag
-                        rawDesiredAngle = currentAngle + currentTx;
+                        // Use current angle + tx correction to center the BASKET (not the tag!)
+                        // txOffset compensates for the difference between tag and basket positions
+                        // When currentTx = txOffset, the turret is pointing at the basket center
+                        double txOffset = calculateTxOffsetToBasket();
+                        rawDesiredAngle = currentAngle + (currentTx - txOffset);
                     } else {
                         // ===== INERTIAL NAVIGATION MODE =====
                         // Calculate desired turret angle to aim at goal using robot position

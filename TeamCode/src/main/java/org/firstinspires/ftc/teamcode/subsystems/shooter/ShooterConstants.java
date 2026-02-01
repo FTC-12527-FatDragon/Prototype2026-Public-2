@@ -17,7 +17,7 @@ public class ShooterConstants {
     public static double shooterEpsilon = 100;
 
     // ==================== PIDF VELOCITY CONTROL (for true closed-loop) ====================
-    // Currently unused - using Bang-Bang with feedforward instead
+    // Currently unused - using Pseudo Closed-loop with feedforward instead
     // Uncomment in Shooter.java to enable PIDF control
     public static double kP = 0.0005;   // Start small for velocity control
     public static double kI = 0.0;      // Usually keep at 0
@@ -29,6 +29,11 @@ public class ShooterConstants {
     // GoBilda 6000RPM Motor (5203-2402-0001): 28 ticks/revolution
     // Max TPS = (6000 / 60) * 28 = 2800 TPS
     public static double maxVelocityTPS = 2800.0;
+    
+    // ==================== MOTOR BRAKING (Pseudo Closed-loop) ====================
+    // When overspeed exceeds threshold, reverse motor to brake (no physical brake)
+    public static double motorBrakeThreshold = 200;  // TPS - if overspeed > this, apply motor brake
+    public static double motorBrakePower = 0.3;      // Reverse power for braking (0-1, tune as needed)
 
     /**
      * Target Velocities (in Ticks Per Second)

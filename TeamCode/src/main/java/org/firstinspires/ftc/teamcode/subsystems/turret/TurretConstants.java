@@ -71,11 +71,18 @@ public class TurretConstants {
     // ==================== HARD LOCK (Absolute Position Tracking) ====================
     // Uses robot absolute position to calculate turret angle to goal
     
-    // Goal positions (field coordinates, inches)
+    // Goal positions (field coordinates, inches) - BASKET CENTER
     public static double blueGoalX = 4.0;     // Blue basket X
     public static double blueGoalY = 140.0;   // Blue basket Y
     public static double redGoalX = 140.0;    // Red basket X
     public static double redGoalY = 140.0;    // Red basket Y
+    
+    // AprilTag positions (field coordinates, inches) - TAG POSITION (NOT basket!)
+    // Tags are in front of the baskets, so TX tracking sees the tag, not the basket
+    public static double blueTagX = 17.0;     // Blue tag (ID 20) X
+    public static double blueTagY = 131.0;    // Blue tag (ID 20) Y
+    public static double redTagX = 127.0;     // Red tag (ID 24) X  (144 - 17)
+    public static double redTagY = 131.0;     // Red tag (ID 24) Y
     
     // Calibration speed (for finding zero position)
     public static double calibrationSpeed = 0.2;

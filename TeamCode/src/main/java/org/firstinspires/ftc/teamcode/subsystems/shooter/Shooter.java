@@ -24,11 +24,11 @@ public class Shooter extends SubsystemBase {
     public final Servo shooterServo;
     public final TelemetryPacket packet = new TelemetryPacket();
     
-    // PID Controller (Currently unused, replaced by Bang-Bang/Feedforward)
+    // PID Controller (Currently unused, replaced by Pseudo Closed-loop)
     public final PIDController pidController;
     
     // ==================== TRUE PIDF VELOCITY CONTROL ====================
-    // Uncomment the PIDF section in periodic() to use this instead of Bang-Bang
+    // Uncomment the PIDF section in periodic() to use this instead of Pseudo Closed-loop
     public final PIDFController velocityPIDF;
     
     // Current state of the shooter
@@ -195,7 +195,7 @@ public class Shooter extends SubsystemBase {
 
     /**
      * Periodic update method.
-     * Implements Bang-Bang control with Feedforward for velocity regulation.
+     * Implements Pseudo Closed-loop control with Feedforward for velocity regulation.
      * STOP state uses open-loop idle power (no PID).
      * 
      * Alternative: TRUE PIDF VELOCITY CONTROL (commented out below)
@@ -218,24 +218,33 @@ public class Shooter extends SubsystemBase {
         double power;
 
         // =================================================================
-        // OPTION 1: BANG-BANG CONTROL (Current Implementation)
-        // Pros: Fast acceleration, simple
+        // OPTION 1: PSEUDO CLOSED-LOOP (Current Implementation)
+        // Pros: Fast acceleration, simple, with motor braking
         // Cons: Not smooth, no fine control
         // =================================================================
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
             // Idle mode: Use fixed open-loop power, no closed-loop control
             power = ShooterConstants.idlePower;
         } else {
-            // Bang-Bang Control with Simple Feedforward Logic
-            // Note: Velocities are negative (e.g., Target: -1500)
-            // currentVel > targetVel (e.g. -1000 > -1500) means we are SLOWER -> Need MAX power to accelerate
-            // currentVel <= targetVel (e.g. -2000 <= -1500) means we are FASTER -> Need FEEDFORWARD power to maintain
+            // Pseudo Closed-loop with Feedforward + Motor Braking
+            // Note: Velocities are negative (e.g., Target: -1500, Current: -1800)
+            // 
+            // Three states:
+            // 1. Too slow (currentVel > targetVel): Full power to accelerate
+            // 2. Too fast by > 200 TPS (currentVel < targetVel - 200): Reverse motor to brake
+            // 3. Near target: Feedforward power to maintain
+            
+            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;  // 200 TPS
             
             if (currentVel > targetVel) {
                 // Too slow, apply max power to accelerate
                 power = 1.0;
+            } else if (currentVel < targetVel - overspeedThreshold) {
+                // Too fast by more than threshold, apply reverse power to brake
+                // Since we don't have physical brake, use motor reverse as brake
+                power = -ShooterConstants.motorBrakePower;
             } else {
-                // Too fast or at speed, reduce power to feedforward value to maintain speed
+                // Near target speed, use feedforward to maintain
                 // Ratio = |target| / maxVelocityTPS
                 power = Math.abs(targetVel) / ShooterConstants.maxVelocityTPS;
             }

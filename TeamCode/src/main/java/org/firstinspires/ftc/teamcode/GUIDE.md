@@ -151,21 +151,29 @@ public enum ShooterState {
 
 #### Control Algorithm | 控制算法
 
-**Bang-Bang with Feedforward** (not PID):
+**Pseudo Closed-loop with Feedforward + Motor Braking** (not PID):
 
-**Bang-Bang 前馈控制**（不是PID）：
+**伪闭环前馈控制 + 电机刹车**（不是PID）：
 
 ```java
 if (currentVel > targetVel) {
     power = 1.0;  // Too slow → max power | 太慢 → 满功率
+} else if (currentVel < targetVel - 200) {
+    power = -0.3;  // Too fast > 200 TPS → motor brake | 太快超200 → 电机刹车
 } else {
-    power = |targetVel| / maxVelocityTPS;  // Feedforward | 前馈
+    power = |targetVel| / maxVelocityTPS;  // Near target → feedforward | 接近目标 → 前馈
 }
 ```
 
-Why not PID? Flywheel momentum makes PID oscillate. Bang-Bang converges faster.
+| State | Condition | Power |
+|-------|-----------|-------|
+| Too slow | `vel > target` | 1.0 (accelerate) |
+| Too fast > 200 TPS | `vel < target - 200` | -0.3 (motor brake) |
+| Near target | otherwise | feedforward |
 
-为什么不用PID？飞轮惯性会使PID振荡。Bang-Bang 收敛更快。
+Why not PID? Flywheel momentum makes PID oscillate. Pseudo Closed-loop converges faster.
+
+为什么不用PID？飞轮惯性会使PID振荡。伪闭环收敛更快。
 
 #### Adaptive Shooting | 自适应发射 (⚠️ DISABLED | 已禁用)
 
@@ -953,7 +961,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | Problem | Possible Cause | Solution | File & Method |
 |---------|----------------|----------|---------------|
 | **Shooter won't reach velocity | 发射器达不到转速** | Power too low / Motors weak | Check motor / Increase feedforward | `Shooter.java` → `periodic()` |
-| **Velocity oscillates | 转速振荡** | PID instead of Bang-Bang | Use Bang-Bang control | `Shooter.java` → `periodic()` |
+| **Velocity oscillates | 转速振荡** | Using PID instead of Pseudo Closed-loop | Use Pseudo Closed-loop | `Shooter.java` → `periodic()` |
 | **Ball doesn't fire | 球不发射** | Velocity not reached | Check `isShooterAtSetPoint()` | `Shooter.java` → `isShooterAtSetPoint()` |
 | **Wrong velocity for distance | 距离对应转速错误** | Calibration data | Update distance/velocity constants | `ShooterConstants.java` → `nearDistance`, `midDistance`, `farDistance` |
 | **Servo angle wrong | 舵机角度错误** | Servo position values | Adjust `shooterServoDownPos/MidPos/UpPos` | `ShooterConstants.java` → servo positions |
@@ -961,7 +969,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
 |------|----------|----------|-------------|
 | **发射器达不到转速** | 功率太低/电机弱 | 检查电机/增加前馈 | `Shooter.java` → `periodic()` |
-| **转速振荡** | 使用PID而非Bang-Bang | 使用Bang-Bang控制 | `Shooter.java` → `periodic()` |
+| **转速振荡** | 使用PID而非伪闭环 | 使用伪闭环控制 | `Shooter.java` → `periodic()` |
 | **球不发射** | 转速未达到 | 检查 `isShooterAtSetPoint()` | `Shooter.java` → `isShooterAtSetPoint()` |
 | **距离对应转速错误** | 校准数据 | 更新距离/转速常量 | `ShooterConstants.java` → 距离常量 |
 | **舵机角度错误** | 舵机位置值 | 调整舵机位置常量 | `ShooterConstants.java` → 舵机位置 |

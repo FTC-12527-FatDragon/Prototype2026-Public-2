@@ -4,6 +4,57 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-01] - Pseudo Closed-loop Motor Braking
+
+### Added
+- **Motor Braking** (`Shooter.java`, `ShooterConstants.java`)
+    - When overspeed exceeds 200 TPS, reverse motor to brake
+    - No physical brake needed - uses motor reverse torque
+    - New constants:
+        - `motorBrakeThreshold = 200` TPS
+        - `motorBrakePower = 0.3` (reverse power)
+
+### Control Logic
+| State | Condition | Action |
+|-------|-----------|--------|
+| Too slow | `currentVel > targetVel` | Full power (1.0) |
+| Too fast > 200 TPS | `currentVel < targetVel - 200` | Reverse brake (-0.3) |
+| Near target | Otherwise | Feedforward maintain |
+
+---
+
+## [2026-02-01] - TX Tracking Basket Offset & Code Cleanup
+
+### Added
+- **AprilTag Coordinates** (`TurretConstants.java`)
+    - `blueTagX/Y = (17, 131)` - Blue tag (ID 20) position
+    - `redTagX/Y = (127, 131)` - Red tag (ID 24) position
+    - Tags are in front of baskets, not at basket center!
+
+- **TX Offset Compensation** (`Turret.java`)
+    - New method: `calculateTxOffsetToBasket()`
+    - TX tracking now aims at **basket center** instead of AprilTag
+    - Both TX tracking and inertial navigation aim at the same point
+
+### Changed
+- **Terminology**: "Bang-Bang" → "Pseudo Closed-loop"
+    - Updated in `Shooter.java` and `ShooterConstants.java`
+    - More accurate description of the control method
+
+- **All Chinese comments translated to English**
+    - `SoloEmergency.java` - 20+ comments
+    - `TransitConstants.java` - 4 comments
+    - `AutoCommandBase.java` - 1 error message
+    - `Units.java` - 2 easter egg comments
+
+### Coordinate Summary
+| Target | Blue | Red |
+|--------|------|-----|
+| **AprilTag** | (17, 131) | (127, 131) |
+| **Basket** | (4, 140) | (140, 140) |
+
+---
+
 ## [2026-02-01] - Gamepad2 Emergency Disable System
 
 ### Added
