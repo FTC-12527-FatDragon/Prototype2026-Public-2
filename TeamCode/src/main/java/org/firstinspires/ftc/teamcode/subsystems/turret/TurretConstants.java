@@ -4,28 +4,30 @@ import com.acmerobotics.dashboard.config.Config;
 
 /**
  * Constants for the Turret (Gimbal) subsystem.
- * Uses REV Through Bore Encoder V2 for angle measurement.
+ * Uses motor built-in encoder for angle measurement.
  * All values are tunable via FTC Dashboard.
  */
 @Config
 public class TurretConstants {
     // Hardware names (must match robot configuration)
     public static String turretMotorName = "turretMotor";
-    public static String turretEncoderName = "turretEncoder";  // REV Through Bore Encoder V2
+    // Note: Encoder is built into the motor, no separate encoder port needed
     
     // Motor power limits
     public static double maxPower = 1.0;        // Maximum motor power
     public static double minPower = -1.0;       // Minimum motor power (reverse)
     
-    // ==================== REV Through Bore Encoder V2 ====================
-    // Incremental mode: 2048 CPR (8192 counts per revolution)
-    // Accuracy: ±0.5°
-    public static int ENCODER_CPR = 8192;       // Counts per revolution
+    // ==================== REV THROUGH BORE ENCODER V2 ====================
+    // External encoder mounted on motor shaft, connected to motor encoder port
+    // REV Through Bore Encoder V2 (REV-11-3174) specs:
+    // - Incremental mode: 8192 counts per revolution
+    // - Accuracy: ±0.5°
+    // Read via turretMotor.getCurrentPosition() (encoder wired to motor port)
+    public static double ENCODER_CPR = 8192;   // REV Through Bore Encoder V2 CPR
     
-    // Gear ratio: motor rotations per turret rotation
-    // e.g., if motor spins 10 times for turret to spin once, GEAR_RATIO = 10.0
-    // TODO: measure and fill in actual gear ratio
-    public static double GEAR_RATIO = 1.0;      // Motor rotations : Turret rotations
+    // External gear ratio: motor turns 116 times -> turret turns 22 times
+    // GEAR_RATIO = motor rotations / turret rotations = 116 / 22 ≈ 5.2727
+    public static double GEAR_RATIO = 116.0 / 22.0;  // Motor rotations : Turret rotations
     
     // Angle offset: encoder 0° corresponds to this turret angle
     // If encoder reads 0° when turret faces right (90°), set this to 90.0
@@ -33,8 +35,13 @@ public class TurretConstants {
     
     // Angle limits (degrees, 0 = forward)
     // Positive = clockwise (right), Negative = counterclockwise (left)
-    public static double minAngleDeg = -90.0;   // Minimum angle (left limit)
-    public static double maxAngleDeg = 90.0;    // Maximum angle (right limit)
+    // Total range ~190° (no slip ring, wires will tangle if exceeded)
+    public static double minAngleDeg = -95.0;   // Minimum angle (left limit)
+    public static double maxAngleDeg = 95.0;    // Maximum angle (right limit)
+    
+    // Unwind threshold: if target is beyond this angle, turret will return to 0°
+    // This prevents the turret from "chasing" targets behind the robot
+    public static double unwindThreshold = 100.0;  // degrees - if |targetAngle| > this, unwind to 0°
     
     // ==================== GEOMETRY (Limelight on turret) ====================
     // Turret center is behind chassis center

@@ -55,4 +55,13 @@ public class DriveConstants {
     // D-Pad Turn Speed
     // Speed for rotation when using D-Pad Left/Right
     public static double dpadTurnSpeed = 0.3;
+    
+    // ==================== AUTO-AIM TARGET COORDINATES ====================
+    // Goal positions for auto-aim (in inches)
+    // Blue goal: (0, 144)
+    // Red goal: (144, 144)
+    public static double blueGoalX = 0;
+    public static double blueGoalY = 144;
+    public static double redGoalX = 144;
+    public static double redGoalY = 144;
 }

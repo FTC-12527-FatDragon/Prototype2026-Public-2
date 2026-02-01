@@ -7,15 +7,18 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+// Note: DcMotor import kept for RunMode and ZeroPowerBehavior enums
+
 /**
  * Subsystem for the Turret (Gimbal) mechanism.
  * Controls a single motor for turret rotation.
- * Uses REV Through Bore Encoder V2 for precise angle measurement.
  * 
- * Encoder specs:
- * - REV Through Bore Encoder V2 (REV-11-3174)
- * - 8192 counts per revolution (incremental mode)
- * - Accuracy: ±0.5°
+ * Encoder: REV Through Bore Encoder V2 mounted on motor shaft
+ * - 8192 CPR (counts per revolution)
+ * - Connected to motor encoder port, read via turretMotor.getCurrentPosition()
+ * 
+ * Gear ratio: Motor turns 116 times -> Turret turns 22 times
+ * External gear ratio = 116/22 ≈ 5.2727
  * 
  * Coordinate system:
  * - 0° = turret facing forward
@@ -23,11 +26,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
  * - Negative = counterclockwise (left)
  */
 public class Turret extends SubsystemBase {
-    public final DcMotor turretMotor;
-    
-    // External encoder (REV Through Bore Encoder V2)
-    // Connected to a motor encoder port on the hub
-    private final DcMotorEx encoderPort;
+    // Turret motor (also used for encoder reading)
+    public final DcMotorEx turretMotor;
     
     // Position PIDF Controller (for both soft lock and hard lock)
     // F term used for static friction compensation
@@ -39,22 +39,51 @@ public class Turret extends SubsystemBase {
     // Lock mode state
     public enum LockMode {
         MANUAL,     // No lock, manual power control
-        SOFT_LOCK,  // Lock to encoder position (0° forward)
-        HARD_LOCK   // Lock to goal position (calculated from absolute position)
+        SOFT_LOCK,  // Lock to 0° forward, chassis handles aiming
+        HARD_LOCK   // Track goal: tx when visible, odometry when not
     }
     private LockMode lockMode = LockMode.MANUAL;
     
     // Position control state
     private double targetAngleDeg = 0;
     
-    // Hard lock state
+    // Hard lock state - target goal (set once at start based on alliance)
     private double goalX = 0;  // Target goal X coordinate
     private double goalY = 0;  // Target goal Y coordinate
+    private boolean goalSet = false;  // Has goal been set?
+    
+    // Alliance enum for easy goal selection
+    public enum Alliance {
+        BLUE,
+        RED
+    }
+    private Alliance currentAlliance = Alliance.BLUE;
     
     // Robot position (updated externally)
     private double robotX = 0;
     private double robotY = 0;
     private double robotHeading = 0;  // Radians
+    
+    // Unwind state: true when turret is returning to 0° because target is unreachable
+    private boolean isUnwinding = false;
+    // Last valid target angle (before unwind was triggered)
+    private double lastValidTargetAngle = 0;
+    
+    // TX tracking for hard lock (when tag is visible)
+    private double currentTx = 0;           // Current tx from vision
+    private boolean hasValidTx = false;     // Is tx currently valid (tag visible)
+    private int currentDetectedTagId = -1;  // Currently detected AprilTag ID
+    
+    // Target tag ID for TX tracking (based on alliance)
+    // In SoloBlue: targetTagId = 20, only use TX tracking when seeing blue tag
+    // In SoloRed: targetTagId = 24, only use TX tracking when seeing red tag
+    // If we see the OTHER tag, we use inertial navigation to aim at OUR goal
+    private int targetTagId = 20;  // Default to blue (ID 20)
+    
+    // TX low-pass filter for stability
+    private double filteredTx = 0;
+    private boolean txFilterInitialized = false;
+    public static double txFilterAlpha = 0.3;  // Filter coefficient (0-1, lower = smoother)
     
     // Encoder offset for zeroing
     private int encoderOffset = 0;
@@ -64,25 +93,21 @@ public class Turret extends SubsystemBase {
 
     /**
      * Constructor for Turret.
-     * Initializes the turret motor and encoder.
+     * Initializes the turret motor (with built-in encoder).
      *
      * @param hardwareMap The hardware map from the OpMode.
      */
     public Turret(HardwareMap hardwareMap) {
-        turretMotor = hardwareMap.get(DcMotor.class, TurretConstants.turretMotorName);
-        
-        // REV Through Bore Encoder connected to an encoder port
-        // Note: In FTC, external encoders are read through motor encoder ports
-        encoderPort = hardwareMap.get(DcMotorEx.class, TurretConstants.turretEncoderName);
+        // Get motor as DcMotorEx for encoder access
+        turretMotor = hardwareMap.get(DcMotorEx.class, TurretConstants.turretMotorName);
         
         // Configure motor
         turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         turretMotor.setDirection(DcMotorSimple.Direction.FORWARD);
         
-        // Configure encoder port (just for reading, not driving)
-        encoderPort.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        encoderPort.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        // Reset encoder and set to RUN_WITHOUT_ENCODER (we'll do our own PID)
+        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         
         // Initialize position PIDF controller (used for both soft and hard lock)
         // F term provides static friction compensation
@@ -96,9 +121,15 @@ public class Turret extends SubsystemBase {
 
     /**
      * Sets the turret motor power with software limits.
+     * NOTE: This is IGNORED during unwind - unwind has highest priority!
      * @param power Motor power (-1.0 to 1.0)
      */
     public void setPower(double power) {
+        // UNWIND HAS HIGHEST PRIORITY - ignore all manual control during unwind
+        if (isUnwinding) {
+            return;  // Silently ignore
+        }
+        
         // Apply software limits if calibrated
         if (isCalibrated) {
             double currentAngle = getAngleDegrees();
@@ -118,17 +149,23 @@ public class Turret extends SubsystemBase {
 
     /**
      * Stops the turret motor.
+     * NOTE: This is IGNORED during unwind - unwind has highest priority!
      */
     public void stop() {
+        // UNWIND HAS HIGHEST PRIORITY
+        if (isUnwinding) {
+            return;
+        }
         this.targetPower = 0;
     }
 
     /**
      * Rotates the turret left (negative power).
+     * NOTE: This is IGNORED during unwind - unwind has highest priority!
      * @param speed Speed of rotation (0.0 to 1.0)
      */
     public void rotateLeft(double speed) {
-        setPower(-Math.abs(speed));
+        setPower(-Math.abs(speed));  // Will be ignored if unwinding
     }
 
     /**
@@ -143,34 +180,35 @@ public class Turret extends SubsystemBase {
 
     /**
      * Gets the raw encoder position (with offset applied).
+     * Reads from motor's built-in encoder.
      * @return Encoder position in ticks.
      */
     public int getEncoderPosition() {
-        return encoderPort.getCurrentPosition() - encoderOffset;
+        return turretMotor.getCurrentPosition() - encoderOffset;
     }
 
     /**
      * Gets the current turret angle in degrees.
      * 0° = forward, positive = clockwise (right), negative = counterclockwise (left)
      * 
-     * Calculation accounts for gear ratio and angle offset:
-     * - Encoder measures motor/input shaft rotations
-     * - Turret rotations = Encoder rotations / GEAR_RATIO
-     * - ANGLE_OFFSET corrects for encoder zero position
+     * Calculation:
+     * 1. Read motor encoder ticks
+     * 2. Convert to motor rotations: ticks / ENCODER_CPR
+     * 3. Convert to turret rotations: motor rotations / GEAR_RATIO (116/22)
+     * 4. Convert to degrees and apply offset
      * 
-     * Example: If encoder reads 90° when turret faces forward (0°):
-     * - Set ANGLE_OFFSET = 90
-     * - Turret angle = OFFSET - encoder = 90 - 90 = 0° (forward) ✓
-     * - When encoder = 0°: turret = 90 - 0 = 90° (right) ✓
+     * Gear ratio: Motor turns 116 times -> Turret turns 22 times
+     * So if motor turned 1 rotation, turret turned 22/116 ≈ 0.19 rotations
      * 
      * @return Turret angle in degrees.
      */
     public double getAngleDegrees() {
         int ticks = getEncoderPosition();
-        // Encoder rotations (how many times the encoder has rotated)
-        double encoderRotations = (double) ticks / TurretConstants.ENCODER_CPR;
-        // Turret rotations (accounting for gear ratio)
-        double turretRotations = encoderRotations / TurretConstants.GEAR_RATIO;
+        // Motor shaft rotations (encoder counts / counts per motor revolution)
+        double motorRotations = (double) ticks / TurretConstants.ENCODER_CPR;
+        // Turret rotations (accounting for external gear ratio)
+        // GEAR_RATIO = 116/22 means motor turns 5.27x for each turret turn
+        double turretRotations = motorRotations / TurretConstants.GEAR_RATIO;
         // Convert to degrees and apply offset
         double rawAngle = turretRotations * 360.0;
         return TurretConstants.ANGLE_OFFSET - rawAngle;
@@ -189,7 +227,7 @@ public class Turret extends SubsystemBase {
      * Call this when turret is facing forward.
      */
     public void resetEncoder() {
-        encoderOffset = encoderPort.getCurrentPosition();
+        encoderOffset = turretMotor.getCurrentPosition();
         isCalibrated = true;
     }
 
@@ -244,15 +282,23 @@ public class Turret extends SubsystemBase {
     }
 
     // ==================== LOCK MODE CONTROL ====================
+    // NOTE: During UNWIND, mode changes are BLOCKED to ensure turret returns to 0° safely
 
     /**
      * Enables SOFT LOCK mode.
      * Turret will hold at the specified angle (or current angle if not specified).
      * Uses position PID to maintain angle.
      * 
+     * NOTE: This is BLOCKED during unwind - unwind has highest priority!
+     * 
      * @param angleDeg Target angle to lock at (0 = forward)
      */
     public void enableSoftLock(double angleDeg) {
+        // UNWIND HAS HIGHEST PRIORITY - cannot change modes during unwind
+        if (isUnwinding) {
+            return;  // Silently ignore
+        }
+        
         // Clamp to limits
         angleDeg = Math.max(TurretConstants.minAngleDeg, 
                            Math.min(TurretConstants.maxAngleDeg, angleDeg));
@@ -267,19 +313,56 @@ public class Turret extends SubsystemBase {
 
     /**
      * Enables SOFT LOCK at 0° (forward).
+     * NOTE: This is BLOCKED during unwind!
      */
     public void enableSoftLock() {
         enableSoftLock(0);
     }
 
     /**
+     * Sets the alliance for this match.
+     * This determines which goal the turret will aim at in HARD_LOCK mode.
+     * Also sets targetTagId for TX tracking:
+     * - BLUE alliance: target tag ID 20, aim at blue basket
+     * - RED alliance: target tag ID 24, aim at red basket
+     * 
+     * Call this once during initialization based on your TeleOp program.
+     * 
+     * @param alliance BLUE or RED
+     */
+    public void setAlliance(Alliance alliance) {
+        this.currentAlliance = alliance;
+        if (alliance == Alliance.BLUE) {
+            this.goalX = TurretConstants.blueGoalX;
+            this.goalY = TurretConstants.blueGoalY;
+            this.targetTagId = 20;  // Only use TX tracking when seeing blue tag
+        } else {
+            this.goalX = TurretConstants.redGoalX;
+            this.goalY = TurretConstants.redGoalY;
+            this.targetTagId = 24;  // Only use TX tracking when seeing red tag
+        }
+        this.goalSet = true;
+    }
+    
+    /**
+     * Gets the current alliance setting.
+     * @return Current alliance (BLUE or RED)
+     */
+    public Alliance getAlliance() {
+        return currentAlliance;
+    }
+    
+    /**
      * Enables HARD LOCK mode for Blue goal.
-     * Turret will continuously calculate the angle to aim at the Blue goal
-     * based on robot's absolute position.
+     * Also sets alliance to BLUE.
+     * NOTE: This is BLOCKED during unwind!
      */
     public void enableHardLockBlue() {
-        this.goalX = TurretConstants.blueGoalX;
-        this.goalY = TurretConstants.blueGoalY;
+        // UNWIND HAS HIGHEST PRIORITY - cannot change modes during unwind
+        if (isUnwinding) {
+            return;
+        }
+        setAlliance(Alliance.BLUE);
         this.lockMode = LockMode.HARD_LOCK;
         
         positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, TurretConstants.kF);
@@ -288,12 +371,35 @@ public class Turret extends SubsystemBase {
 
     /**
      * Enables HARD LOCK mode for Red goal.
-     * Turret will continuously calculate the angle to aim at the Red goal
-     * based on robot's absolute position.
+     * Also sets alliance to RED.
+     * NOTE: This is BLOCKED during unwind!
      */
     public void enableHardLockRed() {
-        this.goalX = TurretConstants.redGoalX;
-        this.goalY = TurretConstants.redGoalY;
+        // UNWIND HAS HIGHEST PRIORITY
+        if (isUnwinding) {
+            return;
+        }
+        setAlliance(Alliance.RED);
+        this.lockMode = LockMode.HARD_LOCK;
+        
+        positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, TurretConstants.kF);
+        positionPIDF.reset();
+    }
+
+    /**
+     * Enables HARD LOCK mode using the pre-set alliance goal.
+     * Make sure to call setAlliance() first!
+     * NOTE: This is BLOCKED during unwind!
+     */
+    public void enableHardLock() {
+        // UNWIND HAS HIGHEST PRIORITY
+        if (isUnwinding) {
+            return;
+        }
+        if (!goalSet) {
+            // Default to blue if alliance not set
+            setAlliance(Alliance.BLUE);
+        }
         this.lockMode = LockMode.HARD_LOCK;
         
         positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, TurretConstants.kF);
@@ -302,13 +408,19 @@ public class Turret extends SubsystemBase {
 
     /**
      * Enables HARD LOCK mode for a custom goal position.
+     * NOTE: This is BLOCKED during unwind!
      * 
      * @param targetX Goal X coordinate (inches)
      * @param targetY Goal Y coordinate (inches)
      */
     public void enableHardLock(double targetX, double targetY) {
+        // UNWIND HAS HIGHEST PRIORITY
+        if (isUnwinding) {
+            return;
+        }
         this.goalX = targetX;
         this.goalY = targetY;
+        this.goalSet = true;
         this.lockMode = LockMode.HARD_LOCK;
         
         positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, TurretConstants.kF);
@@ -317,8 +429,13 @@ public class Turret extends SubsystemBase {
 
     /**
      * Disables all lock modes, returns to manual control.
+     * NOTE: This is BLOCKED during unwind - unwind MUST complete!
      */
     public void disableLock() {
+        // UNWIND HAS HIGHEST PRIORITY - cannot switch to manual during unwind
+        if (isUnwinding) {
+            return;
+        }
         this.lockMode = LockMode.MANUAL;
         positionPIDF.reset();
     }
@@ -353,6 +470,111 @@ public class Turret extends SubsystemBase {
         this.robotX = x;
         this.robotY = y;
         this.robotHeading = heading;
+    }
+    
+    /**
+     * Updates the tx value and detected tag ID for hard lock tracking.
+     * Call this every frame when in HARD_LOCK mode.
+     * 
+     * TX tracking is ONLY used when:
+     * 1. A tag is visible (valid = true)
+     * 2. The detected tag ID matches our target tag (based on alliance)
+     * 3. We are NOT in the middle of unwinding
+     * 
+     * If we see the OTHER alliance's tag, we use inertial navigation instead.
+     * 
+     * @param tx Horizontal offset from Limelight (degrees, positive = target is right)
+     * @param valid True if tag is visible, false otherwise
+     * @param tagId The detected AprilTag ID (-1 if none)
+     */
+    public void updateTx(double tx, boolean valid, int tagId) {
+        this.currentDetectedTagId = tagId;
+        this.hasValidTx = valid;
+        
+        if (valid) {
+            // Apply low-pass filter to reduce jitter
+            if (!txFilterInitialized) {
+                filteredTx = tx;
+                txFilterInitialized = true;
+            } else {
+                filteredTx = txFilterAlpha * tx + (1 - txFilterAlpha) * filteredTx;
+            }
+            this.currentTx = filteredTx;
+        } else {
+            // Reset filter when tag is lost
+            txFilterInitialized = false;
+            this.currentDetectedTagId = -1;
+        }
+    }
+    
+    /**
+     * @deprecated Use updateTx(tx, valid, tagId) instead
+     */
+    @Deprecated
+    public void updateTx(double tx, boolean valid) {
+        updateTx(tx, valid, -1);
+    }
+    
+    /**
+     * Checks if turret currently has valid tx data (tag visible).
+     * @return True if tag is visible and tx is valid.
+     */
+    public boolean hasValidTx() {
+        return hasValidTx;
+    }
+    
+    /**
+     * Gets the current filtered tx value.
+     * @return Filtered tx in degrees.
+     */
+    public double getFilteredTx() {
+        return filteredTx;
+    }
+    
+    /**
+     * Gets the currently detected AprilTag ID.
+     * @return Tag ID, or -1 if no tag detected.
+     */
+    public int getCurrentDetectedTagId() {
+        return currentDetectedTagId;
+    }
+    
+    /**
+     * Gets the target tag ID for TX tracking (based on alliance).
+     * @return Target tag ID (20 for blue, 24 for red).
+     */
+    public int getTargetTagId() {
+        return targetTagId;
+    }
+    
+    /**
+     * Checks if TX tracking is currently active.
+     * TX tracking is only active when:
+     * 1. hasValidTx (tag visible)
+     * 2. currentDetectedTagId == targetTagId (seeing our alliance's tag)
+     * 3. NOT in unwind mode
+     * 
+     * @return True if TX tracking is active.
+     */
+    public boolean isTxTrackingActive() {
+        return hasValidTx && (currentDetectedTagId == targetTagId) && !isUnwinding;
+    }
+    
+    /**
+     * Gets the current tracking mode as a string (for telemetry).
+     * @return "TX_TRACKING", "INERTIAL", "UNWINDING", or "MANUAL/SOFT"
+     */
+    public String getTrackingModeString() {
+        if (lockMode != LockMode.HARD_LOCK) {
+            return lockMode.toString();
+        }
+        if (isUnwinding) {
+            return "UNWINDING";
+        }
+        if (isTxTrackingActive()) {
+            return "TX_TRACKING";
+        }
+        return "INERTIAL";
     }
 
     /**
@@ -421,6 +643,46 @@ public class Turret extends SubsystemBase {
         if (lockMode != LockMode.SOFT_LOCK) return false;
         double error = Math.abs(getAngleDegrees() - targetAngleDeg);
         return error <= TurretConstants.positionTolerance;
+    }
+    
+    /**
+     * Checks if the target angle is reachable by the turret.
+     * @param targetAngle Target angle in degrees
+     * @return True if within turret limits
+     */
+    public boolean isTargetReachable(double targetAngle) {
+        return targetAngle >= TurretConstants.minAngleDeg && 
+               targetAngle <= TurretConstants.maxAngleDeg;
+    }
+    
+    /**
+     * Checks if the turret needs to unwind (target is behind robot, unreachable).
+     * When the calculated target angle exceeds the unwind threshold, the turret
+     * should return to 0° instead of trying to chase an unreachable target.
+     * 
+     * @param rawTargetAngle The raw calculated target angle (before clamping)
+     * @return True if turret should unwind to 0°
+     */
+    public boolean shouldUnwind(double rawTargetAngle) {
+        return Math.abs(rawTargetAngle) > TurretConstants.unwindThreshold;
+    }
+    
+    /**
+     * Checks if the turret is currently unwinding (returning to 0°).
+     * @return True if unwinding
+     */
+    public boolean isUnwinding() {
+        return isUnwinding;
+    }
+    
+    /**
+     * EMERGENCY: Force cancel unwind and return to normal operation.
+     * WARNING: Only use this in emergencies! Normally unwind should complete naturally.
+     * This bypasses all safety checks.
+     */
+    public void forceStopUnwind() {
+        isUnwinding = false;
+        lastValidTargetAngle = 0;
     }
 
     /**
@@ -505,12 +767,95 @@ public class Turret extends SubsystemBase {
                 break;
                 
             case HARD_LOCK:
-                // Goal tracking mode - calculate angle to goal based on robot position
+                // Goal tracking mode with UNWIND protection and alliance-specific TX tracking:
+                //
+                // TX Tracking Rules:
+                // - ONLY use TX tracking when we see OUR alliance's tag (targetTagId)
+                // - If we see the OTHER alliance's tag, use inertial navigation
+                // - Example: SoloBlue (targetTagId=20) sees red tag (24) → use inertial to aim at blue basket
+                //
+                // Unwind Rules:
+                // - If target angle > unwindThreshold, turret returns to 0°
+                // - During unwind: FORCE inertial mode (cannot be interrupted by TX)
+                // - Unwind completes when turret reaches near 0° (within tolerance)
+                //
                 if (isCalibrated) {
-                    // Calculate desired turret angle to aim at goal
-                    double desiredAngle = calculateAngleToGoal();
+                    double rawDesiredAngle;
+                    double desiredAngle;
                     
-                    // Clamp to turret limits
+                    // ===== CHECK IF WE'RE IN UNWIND MODE (cannot be interrupted) =====
+                    if (isUnwinding) {
+                        // During unwind, ALWAYS use inertial navigation
+                        // This cannot be interrupted by TX tracking
+                        rawDesiredAngle = calculateAngleToGoal();
+                        
+                        // Check if unwind is complete (turret near 0°)
+                        // Use a slightly larger tolerance for unwind completion
+                        double unwindCompleteTolerance = TurretConstants.positionTolerance * 2;
+                        if (Math.abs(currentAngle) <= unwindCompleteTolerance) {
+                            // Unwind complete, can resume normal operation
+                            isUnwinding = false;
+                        } else {
+                            // Still unwinding, force target to 0°
+                            desiredAngle = 0;
+                            // Skip the normal unwind check below
+                            // Clamp and apply PID
+                            desiredAngle = Math.max(TurretConstants.minAngleDeg, 
+                                                   Math.min(TurretConstants.maxAngleDeg, desiredAngle));
+                            double error = desiredAngle - currentAngle;
+                            if (Math.abs(error) <= TurretConstants.positionTolerance) {
+                                outputPower = 0;
+                            } else {
+                                outputPower = positionPIDF.calculate(currentAngle, desiredAngle);
+                                if (Math.abs(outputPower) < TurretConstants.minOutputPower && Math.abs(error) > 0) {
+                                    outputPower = Math.signum(error) * TurretConstants.minOutputPower;
+                                }
+                                outputPower = Math.max(-TurretConstants.maxOutputPower, 
+                                                       Math.min(TurretConstants.maxOutputPower, outputPower));
+                            }
+                            break;  // Exit HARD_LOCK case, don't run normal logic
+                        }
+                    }
+                    
+                    // ===== NORMAL MODE: Choose between TX tracking and inertial =====
+                    // TX tracking is ONLY allowed when:
+                    // 1. hasValidTx (tag is visible)
+                    // 2. currentDetectedTagId == targetTagId (seeing OUR alliance's tag)
+                    boolean canUseTxTracking = hasValidTx && (currentDetectedTagId == targetTagId);
+                    
+                    if (canUseTxTracking) {
+                        // ===== TX TRACKING MODE =====
+                        // Use current angle + tx correction to center the target
+                        // This is the most accurate mode when we see our own goal tag
+                        rawDesiredAngle = currentAngle + currentTx;
+                    } else {
+                        // ===== INERTIAL NAVIGATION MODE =====
+                        // Calculate desired turret angle to aim at goal using robot position
+                        // Used when:
+                        // - No tag visible
+                        // - Seeing the OTHER alliance's tag (we still know our position!)
+                        rawDesiredAngle = calculateAngleToGoal();
+                    }
+                    
+                    // ===== UNWIND CHECK (no slip ring protection) =====
+                    // If target is beyond the unwind threshold (e.g., behind robot),
+                    // FORCE switch to inertial mode and return turret to 0°
+                    // This prevents wire tangling in a non-360° turret.
+                    if (shouldUnwind(rawDesiredAngle)) {
+                        // Target is unreachable, start unwind sequence
+                        if (!isUnwinding) {
+                            isUnwinding = true;
+                            lastValidTargetAngle = rawDesiredAngle;
+                            // Force switch to inertial mode BEFORE starting unwind
+                            // (This ensures we're using odometry-based targeting)
+                        }
+                        desiredAngle = 0;  // Return to forward position
+                    } else {
+                        // Target is reachable, use calculated angle
+                        desiredAngle = rawDesiredAngle;
+                    }
+                    
+                    // Clamp to turret limits (safety)
                     desiredAngle = Math.max(TurretConstants.minAngleDeg, 
                                            Math.min(TurretConstants.maxAngleDeg, desiredAngle));
                     

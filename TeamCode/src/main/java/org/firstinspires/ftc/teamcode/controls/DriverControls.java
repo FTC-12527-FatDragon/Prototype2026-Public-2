@@ -131,7 +131,7 @@ public class DriverControls {
                     if (adaptiveCalculated) {
                         isAuto[0] = true;  // Disable chassis during adaptive shooting
                         robot.drive.stop();  // Stop chassis immediately
-                        robot.shooter.cancelAutoBrakeCycle();  // Cancel brake
+                        // NOTE: Brake servo has been removed from codebase
                         robot.shooter.setAdaptiveVelocity(cachedAdaptiveVelocity);
                         robot.shooter.setAdaptiveServoPosition(cachedAdaptiveServoPos);
                     }
@@ -141,7 +141,7 @@ public class DriverControls {
                     isAuto[0] = false;  // Re-enable chassis
                     adaptiveCalculated = false;  // Reset flag
                     robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    robot.shooter.startAutoBrakeCycle();  // Start brake when releasing
+                    // NOTE: Brake servo has been removed from codebase
                 })
         );
         
@@ -181,7 +181,7 @@ public class DriverControls {
                     if (adaptiveCalculated) {
                         isAuto[0] = true;  // Disable chassis during adaptive shooting
                         robot.drive.stop();  // Stop chassis immediately
-                        robot.shooter.cancelAutoBrakeCycle();  // Cancel brake
+                        // NOTE: Brake servo has been removed from codebase
                         robot.shooter.setAdaptiveVelocity(cachedAdaptiveVelocity);
                         robot.shooter.setAdaptiveServoPosition(cachedAdaptiveServoPos);
                     }
@@ -191,7 +191,7 @@ public class DriverControls {
                     isAuto[0] = false;  // Re-enable chassis
                     adaptiveCalculated = false;  // Reset flag
                     robot.shooter.setShooterState(Shooter.ShooterState.STOP);
-                    robot.shooter.startAutoBrakeCycle();  // Start brake when releasing
+                    // NOTE: Brake servo has been removed from codebase
                 })
         );
         

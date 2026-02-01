@@ -4,6 +4,141 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-01] - Turret Auto-Aim Logic Overhaul
+
+### Added
+- **Alliance-Specific TX Tracking** (`Turret.java`)
+    - TX tracking only activates when seeing YOUR alliance's AprilTag
+    - SoloBlue: Only use TX when seeing tag 20 (blue goal)
+    - SoloRed: Only use TX when seeing tag 24 (red goal)
+    - Seeing OTHER alliance's tag → use inertial navigation to aim at YOUR goal
+    - `targetTagId` variable set automatically by `setAlliance()`
+
+- **Unwind Priority Protection** (`Turret.java`)
+    - Unwind (returning to 0°) now has HIGHEST priority
+    - Cannot be interrupted by any external control
+    - All control methods blocked during unwind:
+        - `setPower()`, `stop()`, `rotateLeft/Right()`
+        - `enableSoftLock()`, `enableHardLock*()`, `disableLock()`
+    - Unwind completes only when turret reaches near 0°
+    - Force inertial navigation during unwind (no TX tracking)
+
+- **New Debug Methods** (`Turret.java`)
+    - `getCurrentDetectedTagId()`: Get currently detected tag ID
+    - `getTargetTagId()`: Get target tag ID (20 or 24)
+    - `isTxTrackingActive()`: Check if TX tracking is active
+    - `getTrackingModeString()`: Returns "TX_TRACKING", "INERTIAL", or "UNWINDING"
+    - `forceStopUnwind()`: Emergency cancel unwind (use with caution!)
+
+### Changed
+- **updateTx() Method** (`Turret.java`)
+    - Now requires tagId parameter: `updateTx(tx, valid, tagId)`
+    - Old method deprecated but still works (assumes tagId = -1)
+
+---
+
+## [2026-02-01] - Turret Gear Ratio & REV Encoder
+
+### Changed
+- **Turret Encoder Configuration** (`TurretConstants.java`, `Turret.java`)
+    - Uses REV Through Bore Encoder V2 mounted on motor shaft
+    - `ENCODER_CPR = 8192` (REV Through Bore Encoder V2 incremental mode)
+    - Encoder wired to motor encoder port, read via `turretMotor.getCurrentPosition()`
+    
+- **Gear Ratio Configuration** (`TurretConstants.java`)
+    - `GEAR_RATIO = 116.0 / 22.0 ≈ 5.2727`
+    - Motor shaft turns 116 times → Turret turns 22 times
+    
+### Removed
+- `turretEncoderName` constant (encoder shares motor port)
+- Separate `encoderPort` variable in `Turret.java`
+
+### Hardware Setup
+- REV Through Bore Encoder V2 (REV-11-3174) on motor shaft
+- Encoder signal wired to same motor port on Control Hub
+- Motor configured as DcMotorEx to access encoder
+
+---
+
+## [2026-02-01] - Turret-Compensated Absolute Position
+
+### Added
+- **Turret-Compensated Vision Position** (`MecanumDrivePinpoint.java`)
+    - New method: `updateAbsolutePositionFromVisionWithTurret(vision, turretAngleRad)`
+    - Calculates correct chassis center position when Limelight is mounted on turret
+    - Accounts for turret geometry:
+        - Turret center: 47mm behind chassis center (~1.85")
+        - Limelight: 140.86mm from turret center (~5.55")
+    - Transforms Limelight offset from chassis coordinates to field coordinates
+
+### Changed
+- **Absolute Position Update Logic** (commented code in `TeleOpDriveCommand.java`, `TeleOp.java`)
+    - Now uses `updateAbsolutePositionFromVisionWithTurret()` with turret angle parameter
+    - Falls back to 0° if turret not calibrated
+    
+### Deprecated
+- `updateAbsolutePositionFromVision(vision)` - Legacy method without turret compensation
+    - Still works but assumes Limelight at chassis center (incorrect for turret setup)
+
+### Fixed
+- **DriverControls.java**: Removed calls to deleted brake methods in adaptive shooting code
+    - `cancelAutoBrakeCycle()` and `startAutoBrakeCycle()` replaced with comments
+
+---
+
+## [2026-02-01] - TeleOp Simplification & Auto-Aim Disable
+
+### Disabled (Commented Out)
+- **Chassis Auto-Aim** (`TeleOpDriveCommand.java`)
+    - Absolute position update (Vision + Odometry fusion)
+    - Soft Lock / Hard Lock aware auto-aim
+    - D-Pad fine rotation
+    
+- **Turret Control** (`TeleOp.java`, `DriverControls.java`)
+    - `ENABLE_TURRET = false` in `Robot.java`
+    - Turret update logic in `run()` loop
+    - Turret telemetry display
+    - Right Stick Button lock mode toggle
+    
+- **Vision/Limelight** (`TeleOp.java`)
+    - `ENABLE_VISION = false` in `Robot.java`
+    - All Vision-related telemetry
+    - Absolute position display
+    
+- **Adaptive Shooting** (`DriverControls.java`)
+    - X button (Blue adaptive fire)
+    - B button (Red adaptive fire)
+
+### Removed
+- **Brake Servo**: All brake-related code deleted from codebase
+    - `ShooterConstants.java`: Removed brake constants
+    - `Shooter.java`: Removed brake servo, methods, and auto-brake logic
+    - `DriverControls.java`: Removed D-Pad Down brake binding
+
+### Changed
+- **Shooter Servo Positions** (`ShooterConstants.java`)
+    - STOP/MID: 0.5 (center position)
+    - SLOW (near): 0.04 (low angle)
+    - FAST (far): 1.0 (high angle)
+    
+- **Transit/Limit Servo Positions** (`TransitConstants.java`)
+    - `transitUpPos`: 0.36 (firing)
+    - `transitDownPos`: 0.62 (loading)
+    - `limitOpenPos`: 0.6
+    - `limitClosedPos`: 0.3
+    
+- **Intake Full Power** (`IntakeConstants.java`)
+    - LT trigger now runs intake at 1.0 power (was 0.65)
+    
+- **TeleOp Driving** (`TeleOpDriveCommand.java`)
+    - Simplified to manual-only field-centric drive
+    - Same logic as `DriveOnlyTeleOp.java`
+
+### Note
+All disabled code is preserved in comments and can be re-enabled when Vision/Turret hardware is ready.
+
+---
+
 ## [2026-01-30] - Turret Gear Ratio Support
 
 ### Added

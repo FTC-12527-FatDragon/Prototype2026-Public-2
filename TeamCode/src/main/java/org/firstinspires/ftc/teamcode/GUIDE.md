@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-01-30
+> FTC Team 12527 | Last Updated: 2026-02-01
 
 ---
 
@@ -109,17 +109,24 @@ Each subsystem extends `SubsystemBase` (FTCLib) and implements a `periodic()` me
 | `moveRobotFieldRelative(x, y, turn)` | Field-centric movement | 场地坐标系移动 |
 | `calculateAdaptiveVelocity(tagId)` | Distance-based velocity | 根据距离计算转速 |
 | `calculateAdaptiveServoPosition(tagId)` | Distance-based angle | 根据距离计算角度 |
-| `applyBreak()` | Position hold PID | 位置保持PID |
 
 #### Absolute Position Fusion | 绝对位置融合
 
-The system fuses Vision and Odometry:
-- **Vision available**: Update absolute position from Limelight
-- **Vision lost**: Dead-reckoning using odometry delta
+The system fuses Vision and Odometry with **turret angle compensation**:
 
-系统融合视觉和里程计：
-- **有视觉数据**：从 Limelight 更新绝对位置
-- **视觉丢失**：使用里程计增量进行航位推算
+系统融合视觉和里程计，**带云台角度补偿**：
+
+**When Limelight sees goal tag (20 or 24) | 当 Limelight 看到目标标签时:**
+1. Get Limelight's field position (from vision) | 获取 Limelight 在场地中的位置
+2. Calculate Limelight offset from chassis center (based on turret angle) | 根据云台角度计算 Limelight 相对底盘中心的偏移
+3. Chassis position = Limelight position - offset | 底盘位置 = Limelight 位置 - 偏移
+
+**Turret Geometry | 云台几何:**
+- Turret center: 47mm behind chassis center (~1.85") | 云台中心在底盘中心后方 47mm
+- Limelight: 140.86mm from turret center (~5.55") | Limelight 距离云台中心 140.86mm
+
+**When no tag visible | 看不到标签时:**
+- Dead-reckoning using odometry delta | 使用里程计增量进行航位推算
 
 ---
 
@@ -135,10 +142,10 @@ The system fuses Vision and Odometry:
 
 ```java
 public enum ShooterState {
-    STOP(-600,  0.85),   // Idle speed, low angle | 待机转速，低角度
-    SLOW(-700,  0.85),   // Near shot | 近射
-    MID(-950,   0.29),   // Mid shot | 中射
-    FAST(-1420, 0.29);   // Far shot | 远射
+    STOP(-600,  0.5),    // Idle speed, mid angle | 待机转速，中位角度
+    SLOW(-700,  0.04),   // Near shot, low angle | 近射，低角度
+    MID(-950,   0.5),    // Mid shot, mid angle | 中射，中位角度
+    FAST(-1420, 1.0);    // Far shot, high angle | 远射，高角度
 }
 ```
 
@@ -160,7 +167,10 @@ Why not PID? Flywheel momentum makes PID oscillate. Bang-Bang converges faster.
 
 为什么不用PID？飞轮惯性会使PID振荡。Bang-Bang 收敛更快。
 
-#### Adaptive Shooting | 自适应发射
+#### Adaptive Shooting | 自适应发射 (⚠️ DISABLED | 已禁用)
+
+> **Note**: Adaptive shooting is currently commented out. See `DriverControls.java`.
+> **注意**: 自适应发射功能当前已注释禁用。
 
 Automatically calculates velocity based on distance to goal.
 
@@ -168,7 +178,6 @@ Automatically calculates velocity based on distance to goal.
 
 **Requirements | 要求:**
 - Must see Goal Tag (ID 20 or 24) to activate | 必须看到目标标签（ID 20 或 24）才能启用
-- Chassis is disabled during adaptive shooting | 自适应发射期间底盘被禁用
 
 | Distance | Velocity | 距离 | 转速 |
 |----------|----------|------|------|
@@ -176,16 +185,6 @@ Automatically calculates velocity based on distance to goal.
 | 24.4"~77.4" | 700→950 | 62cm~197cm | 线性插值 |
 | 77.4"~128.4" | 950→1420 | 197cm~326cm | 线性插值 |
 | ≥128.4" | 1420 TPS | ≥326cm | 1420 TPS |
-
-#### Brake Servo | 刹车舵机
-
-Auto-brake cycle:
-1. Release shoot button → engage brake
-2. Speed drops below -680 TPS → release brake
-
-自动刹车循环：
-1. 松开发射键 → 刹车接合
-2. 转速降到 -680 TPS 以下 → 松开刹车
 
 ---
 
@@ -202,7 +201,7 @@ Auto-brake cycle:
 | Mode | Power | Condition | 模式 | 功率 | 条件 |
 |------|-------|-----------|------|------|------|
 | Standard | 0.5 | Default | 标准 | 0.5 | 默认 |
-| Full | 0.65 | LT held | 全功率 | 0.65 | 按住LT |
+| Full (LT) | **1.0** | LT held | 全功率 | **1.0** | 按住LT |
 | Fast Intake | 0.7 | Auto mode | 快速进球 | 0.7 | 自动模式 |
 | Fast Shooting | 0.8 | At target velocity | 快速发射 | 0.8 | 达到目标转速 |
 | Transit | 1.0 | During transit | 传输中 | 1.0 | 传输时 |
@@ -225,26 +224,26 @@ Auto-brake cycle:
 
 ```java
 public enum TransitState {
-    UP(0.87),    // Extended - pushing ball | 伸出 - 推球
-    DOWN(0.67);  // Retracted - loading position | 收回 - 装填位置
+    UP(0.36),    // Extended - pushing ball | 伸出 - 推球
+    DOWN(0.62);  // Retracted - loading position | 收回 - 装填位置
 }
 ```
 
 #### Limit Servo | 限位舵机
 
 The `limitServo` automatically follows the transit state:
-- **Transit UP** → Limit servo **OPEN** (`limitOpenPos`)
-- **Transit DOWN** → Limit servo **CLOSED** (`limitClosedPos`)
+- **Transit UP** → Limit servo **OPEN** (0.6)
+- **Transit DOWN** → Limit servo **CLOSED** (0.3)
 
 限位舵机自动跟随传输状态：
-- **传输抬起** → 限位舵机**打开**
-- **传输放下** → 限位舵机**关闭**
+- **传输抬起** → 限位舵机**打开** (0.6)
+- **传输放下** → 限位舵机**关闭** (0.3)
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
+| Parameter | Value | Description |
+|-----------|-------|-------------|
 | `limitServoName` | `"limitServo"` | Hardware name |
-| `limitOpenPos` | 0 | Open position (TODO: calibrate) |
-| `limitClosedPos` | 0 | Closed position (TODO: calibrate) |
+| `limitOpenPos` | 0.6 | Open position (when transit UP) |
+| `limitClosedPos` | 0.3 | Closed position (when transit DOWN) |
 
 The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` returns true.
 
@@ -252,9 +251,12 @@ The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` re
 
 ---
 
-### 2.5 Vision | 视觉
+### 2.5 Vision | 视觉 (⚠️ DISABLED | 已禁用)
 
 **File | 文件**: `subsystems/vision/Vision.java`
+
+> **Note**: Vision subsystem is currently disabled. `ENABLE_VISION = false` in `Robot.java`.
+> **注意**: 视觉子系统当前已禁用。
 
 **Purpose | 用途**: AprilTag detection using Limelight3A.
 
@@ -280,9 +282,12 @@ The `TransitCommand` only raises transit when `shooter.isShooterAtSetPoint()` re
 
 ---
 
-### 2.6 Turret | 云台
+### 2.6 Turret | 云台 (⚠️ DISABLED | 已禁用)
 
 **File | 文件**: `subsystems/turret/Turret.java`
+
+> **Note**: Turret subsystem is currently disabled. `ENABLE_TURRET = false` in `Robot.java`.
+> **注意**: 云台子系统当前已禁用。
 
 **Purpose | 用途**: Controls a single motor for turret/gimbal rotation with position PID and goal tracking.
 
@@ -305,19 +310,32 @@ public enum LockMode {
 
 **HARD_LOCK (硬锁定)**:
 - Turret auto-calculates angle to aim at goal
-- Uses robot absolute position + goal coordinates
-- Two targets:
-  - Blue goal: (4, 140) inches
-  - Red goal: (140, 140) inches
-- 云台自动计算瞄准目标的角度
+- Two tracking modes based on what tag is visible:
+
+| Condition | Mode | Description |
+|-----------|------|-------------|
+| See OUR tag (e.g., Blue sees ID 20) | **TX Tracking** | Use tx offset for precise aiming |
+| See OTHER tag (e.g., Blue sees ID 24) | **Inertial** | Calculate angle from position |
+| No tag visible | **Inertial** | Calculate angle from position |
+| Target > 100° (unreachable) | **Unwind** | Return to 0°, cannot be interrupted |
+
+**Alliance-specific aiming | 联盟特定瞄准:**
+- SoloBlue: `targetTagId = 20`, always aims at blue basket (4, 140)
+- SoloRed: `targetTagId = 24`, always aims at red basket (140, 140)
+
+**Unwind Protection | 回正保护:**
+- When target angle > 100°, turret returns to 0° (forward)
+- This prevents wire tangling (no slip ring)
+- Unwind has HIGHEST priority - cannot be interrupted by any control
+- 当目标角度超过100°时，云台返回0°以防止线缆缠绕
 
 #### Key Methods | 关键方法
 
 | Method | Description | 描述 |
 |--------|-------------|------|
 | **Basic Control | 基础控制** | |
-| `setPower(power)` | Set motor power (-1 to 1) | 设置电机功率 |
-| `stop()` | Stop the motor | 停止电机 |
+| `setPower(power)` | Set motor power (-1 to 1) ⚠️ Blocked during unwind | 设置电机功率 |
+| `stop()` | Stop the motor ⚠️ Blocked during unwind | 停止电机 |
 | `rotateLeft(speed)` | Rotate left | 向左旋转 |
 | `rotateRight(speed)` | Rotate right | 向右旋转 |
 | **Encoder | 编码器** | |
@@ -326,17 +344,25 @@ public enum LockMode {
 | `resetEncoder()` | Reset encoder to zero | 重置编码器 |
 | `isCalibrated()` | Check if calibrated | 检查是否已校准 |
 | **Lock Modes | 锁定模式** | |
-| `enableSoftLock()` | Enable soft lock at 0° | 启用软锁定（0°） |
+| `enableSoftLock()` | Enable soft lock at 0° ⚠️ Blocked during unwind | 启用软锁定（0°） |
 | `enableSoftLock(angle)` | Enable soft lock at angle | 启用软锁定（指定角度） |
-| `enableHardLockBlue()` | Hard lock to blue goal | 硬锁定蓝框 |
-| `enableHardLockRed()` | Hard lock to red goal | 硬锁定红框 |
-| `disableLock()` | Return to manual control | 返回手动控制 |
+| `enableHardLockBlue()` | Hard lock to blue goal (tag 20) | 硬锁定蓝框 |
+| `enableHardLockRed()` | Hard lock to red goal (tag 24) | 硬锁定红框 |
+| `disableLock()` | Return to manual control ⚠️ Blocked during unwind | 返回手动控制 |
 | `getLockMode()` | Get current lock mode | 获取当前锁定模式 |
 | **Position Tracking | 位置跟踪** | |
 | `updateRobotPosition(x, y, heading)` | Update robot position | 更新机器人位置 |
+| `updateTx(tx, valid, tagId)` | Update TX value with tag ID | 更新TX值和标签ID |
 | `calculateAngleToGoal()` | Calculate angle to goal | 计算到目标角度 |
 | `getDistanceToGoal()` | Get distance to goal | 获取到目标距离 |
 | `isOnTarget()` | Check if aimed at goal | 检查是否瞄准目标 |
+| **Tracking State | 跟踪状态** | |
+| `isTxTrackingActive()` | Check if TX tracking is active | 检查TX跟踪是否激活 |
+| `getTrackingModeString()` | Get current mode ("TX_TRACKING"/"INERTIAL"/"UNWINDING") | 获取当前模式 |
+| `isUnwinding()` | Check if turret is unwinding | 检查是否正在回正 |
+| `forceStopUnwind()` | ⚠️ Emergency cancel unwind | 紧急取消回正 |
+| `getCurrentDetectedTagId()` | Get currently detected tag ID | 获取当前检测到的标签 |
+| `getTargetTagId()` | Get target tag ID (20 or 24) | 获取目标标签ID |
 | **Geometry | 几何** | |
 | `getLimelightDistanceFromCenterMM()` | Limelight to chassis center | Limelight到底盘中心距离 |
 
@@ -344,21 +370,40 @@ public enum LockMode {
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `turretMotorName` | `"turretMotor"` | Motor hardware name |
-| `turretEncoderName` | `"turretEncoder"` | REV Through Bore Encoder |
-| `ENCODER_CPR` | 8192 | Counts per revolution |
-| `GEAR_RATIO` | 1.0 | Motor rotations per turret rotation (TODO: measure) |
-| `minAngleDeg` | -90° | Left limit |
-| `maxAngleDeg` | 90° | Right limit |
-| `kP/kI/kD` | 0/0/0 | Position PID (TODO: tune) |
+| `turretMotorName` | `"turretMotor"` | Motor hardware name (encoder wired to this port) |
+| `ENCODER_CPR` | 8192 | REV Through Bore Encoder V2 counts per revolution |
+| `GEAR_RATIO` | 116/22 ≈ 5.27 | Motor turns 116× for turret to turn 22× |
+| `minAngleDeg` | -95° | Left limit |
+| `maxAngleDeg` | 95° | Right limit |
+| `unwindThreshold` | 100° | Unwind to 0° if target exceeds this |
+| `kP/kI/kD/kF` | 0/0/0/0 | Position PIDF (TODO: tune) |
 | `blueGoalX/Y` | (4, 140) | Blue basket position |
 | `redGoalX/Y` | (140, 140) | Red basket position |
 
+#### Encoder Configuration | 编码器配置
+
+The turret uses a **REV Through Bore Encoder V2** mounted on the motor shaft.
+
+云台使用安装在电机轴上的 **REV Through Bore Encoder V2**。
+
+- **Hardware**: REV Through Bore Encoder V2 (REV-11-3174)
+- **Mounting**: On motor shaft, wired to motor encoder port on Hub
+- **Reading Method**: `turretMotor.getCurrentPosition()`
+- **CPR**: 8192 counts per revolution (incremental mode)
+
+**Wiring | 接线:**
+- Encoder 信号线接到 Control Hub / Expansion Hub 的电机编码器端口
+- 通过 `turretMotor.getCurrentPosition()` 读取（不需要单独的 encoder 配置）
+
 #### Gear Ratio | 齿比
 
-The turret uses a gear reduction between the motor and the turret output. The `GEAR_RATIO` parameter accounts for this:
+**Actual Gear Ratio**: Motor turns 116 times → Turret turns 22 times
 
-云台在电机和输出之间有减速齿轮。`GEAR_RATIO` 参数用于计算：
+**实际齿轮比**: 电机转 116 圈 → 云台转 22 圈
+
+```
+GEAR_RATIO = 116 / 22 ≈ 5.2727
+```
 
 ```
 Turret Angle = (Encoder Ticks / ENCODER_CPR / GEAR_RATIO) × 360°
@@ -366,9 +411,9 @@ Turret Angle = (Encoder Ticks / ENCODER_CPR / GEAR_RATIO) × 360°
 
 | GEAR_RATIO | Meaning | 含义 |
 |------------|---------|------|
+| 5.27 (116/22) | **Current setup** | **当前设置** |
 | 1.0 | Direct drive (1:1) | 直连 |
 | 10.0 | Motor spins 10× for turret to spin 1× | 10:1 减速 |
-| 0.5 | Motor spins 0.5× for turret to spin 1× | 1:2 加速 |
 
 ---
 
@@ -658,35 +703,25 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 
 ### Driver Controller | 主手柄
 
-| Button | Function | 功能 |
-|--------|----------|------|
-| **Left Stick** | Strafe | 平移 |
-| **Right Stick** | Turn | 转向 |
-| **Left Stick Button** | Reset heading | 重置朝向 |
-| **Right Stick Button** | Toggle turret lock (Soft ↔ Hard) | 切换云台锁定模式 |
-| **LB** | Slow shot (700 TPS) | 近射 |
-| **RB** | Mid shot (950 TPS) | 中射 |
-| **RT** | Fast shot (1420 TPS) | 远射 |
-| **LT** | Full power intake + Transit fire | 全功率进球 + 发射 |
-| **X** | Adaptive fire (Blue goal) - requires Goal Tag visible, disables chassis | 自适应发射（蓝方）- 需看到目标标签，禁用底盘 |
-| **B** | Adaptive fire (Red goal) - requires Goal Tag visible, disables chassis | 自适应发射（红方）- 需看到目标标签，禁用底盘 |
-| **D-Pad Up** | Reverse intake | 反转进球 |
-| **D-Pad Down** | Manual brake | 手动刹车 |
-| **D-Pad L/R** | Fine rotation | 微调转向 |
+| Button | Function | Status | 功能 | 状态 |
+|--------|----------|--------|------|------|
+| **Left Stick** | Strafe | ✅ | 平移 | ✅ |
+| **Right Stick** | Turn | ✅ | 转向 | ✅ |
+| **Left Stick Button** | Reset heading | ✅ | 重置朝向 | ✅ |
+| **Right Stick Button** | Toggle turret lock | ❌ Disabled | 切换云台锁定 | ❌ 禁用 |
+| **LB** | Slow shot (700 TPS) | ✅ | 近射 | ✅ |
+| **RB** | Mid shot (950 TPS) | ✅ | 中射 | ✅ |
+| **RT** | Fast shot (1420 TPS) | ✅ | 远射 | ✅ |
+| **LT** | Full power intake (1.0) + Transit fire | ✅ | 全功率进球 + 发射 | ✅ |
+| **X** | Adaptive fire (Blue) | ❌ Disabled | 自适应发射（蓝） | ❌ 禁用 |
+| **B** | Adaptive fire (Red) | ❌ Disabled | 自适应发射（红） | ❌ 禁用 |
+| **D-Pad Up** | Reverse intake | ✅ | 反转进球 | ✅ |
+| **D-Pad Down** | ~~Manual brake~~ | ❌ Removed | ~~手动刹车~~ | ❌ 已删除 |
 
-#### Turret Lock Toggle | 云台锁定切换
+#### Turret Lock Toggle | 云台锁定切换 (⚠️ DISABLED | 已禁用)
 
-| Current Mode | Press Right Stick | Action |
-|--------------|-------------------|--------|
-| **Soft Lock** | See AprilTag 20 or 24 | → **Hard Lock** (aim at detected goal) |
-| **Soft Lock** | No tag visible | Stay in Soft Lock |
-| **Hard Lock** | Any | → **Soft Lock** (0°) |
-
-| 当前模式 | 按下右摇杆 | 动作 |
-|----------|-----------|------|
-| **软锁定** | 看到 AprilTag 20 或 24 | → **硬锁定**（瞄准检测到的目标） |
-| **软锁定** | 看不到标签 | 保持软锁定 |
-| **硬锁定** | 任意 | → **软锁定**（0°） |
+> **Note**: Turret controls are currently disabled. See `DriverControls.java` and `TeleOp.java`.
+> **注意**: 云台控制当前已禁用。
 
 ---
 
@@ -703,11 +738,15 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 
 ### Servo Positions | 舵机位置
 
-| Servo | Low | High | 舵机 | 低位 | 高位 |
-|-------|-----|------|------|------|------|
-| Shooter Angle | 0.85 (near) | 0.29 (far) | 发射角度 | 0.85 | 0.29 |
-| Transit | 0.67 (down) | 0.87 (up) | 传输 | 0.67 | 0.87 |
-| Brake | 0.81 (released) | 0.85 (engaged) | 刹车 | 0.81 | 0.85 |
+| Servo | Position | Description | 舵机 | 位置 | 说明 |
+|-------|----------|-------------|------|------|------|
+| Shooter Angle | 0.04 | Near (SLOW) | 发射角度 | 0.04 | 近射 |
+| Shooter Angle | 0.5 | Mid (STOP/MID) | 发射角度 | 0.5 | 中位/待机 |
+| Shooter Angle | 1.0 | Far (FAST) | 发射角度 | 1.0 | 远射 |
+| Transit | 0.62 (down) | Loading | 传输 | 0.62 | 装填 |
+| Transit | 0.36 (up) | Firing | 传输 | 0.36 | 发射 |
+| Limit | 0.3 (closed) | Transit down | 限位 | 0.3 | 传输放下时 |
+| Limit | 0.6 (open) | Transit up | 限位 | 0.6 | 传输抬起时 |
 
 ---
 
@@ -734,7 +773,8 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | `hasVisionCalibrated()` | Check if calibrated | 检查是否已校准 |
 | `getAbsolutePose()` | Get absolute pose | 获取绝对位姿 |
 | **Absolute Position | 绝对位置** | |
-| `updateAbsolutePositionFromVision(vision)` | Update from vision | 从视觉更新位置 |
+| `updateAbsolutePositionFromVisionWithTurret(vision, turretAngleRad)` | **NEW** Update with turret compensation | 带云台补偿的视觉更新 |
+| `updateAbsolutePositionFromVision(vision)` | ~~Deprecated~~ Legacy (no turret) | 已弃用，无云台补偿 |
 | `updateAbsolutePositionFromOdometry()` | Update from odometry | 从里程计更新位置 |
 | `getAbsoluteX()` | Get absolute X (inches) | 获取绝对X坐标 |
 | `getAbsoluteY()` | Get absolute Y (inches) | 获取绝对Y坐标 |
@@ -764,16 +804,9 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | `getAdaptiveVelocity()` | Get adaptive velocity | 获取自适应转速 |
 | `setAdaptiveServoPosition(pos)` | Set adaptive servo position | 设置自适应舵机位置 |
 | `getAdaptiveServoPosition()` | Get adaptive servo position | 获取自适应舵机位置 |
-| **Brake Control | 刹车控制** | |
-| `engageBrake()` | Engage brake servo | 接合刹车 |
-| `releaseBrake()` | Release brake servo | 松开刹车 |
-| `toggleBrake()` | Toggle brake state | 切换刹车状态 |
-| `isBrakeEngaged()` | Check brake state | 检查刹车状态 |
-| `manualEngageBrake()` | Manual brake override | 手动刹车覆盖 |
-| `manualReleaseBrake()` | Release manual override | 释放手动覆盖 |
-| `startAutoBrakeCycle()` | Start auto-brake on release | 开始自动刹车循环 |
-| `cancelAutoBrakeCycle()` | Cancel auto-brake | 取消自动刹车循环 |
-| `isAutoBrakeCycleActive()` | Check auto-brake status | 检查自动刹车状态 |
+
+> **Note**: Brake servo has been removed from the codebase.
+> **注意**: 刹车舵机已从代码中删除。
 
 ### 9.3 Intake Methods | 进球方法
 
@@ -874,9 +907,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **Velocity oscillates | 转速振荡** | PID instead of Bang-Bang | Use Bang-Bang control | `Shooter.java` → `periodic()` |
 | **Ball doesn't fire | 球不发射** | Velocity not reached | Check `isShooterAtSetPoint()` | `Shooter.java` → `isShooterAtSetPoint()` |
 | **Wrong velocity for distance | 距离对应转速错误** | Calibration data | Update distance/velocity constants | `ShooterConstants.java` → `nearDistance`, `midDistance`, `farDistance` |
-| **Brake doesn't engage | 刹车不接合** | Servo position wrong | Adjust `brakeServoEngagedPos` | `ShooterConstants.java` → brake positions |
 | **Servo angle wrong | 舵机角度错误** | Servo position values | Adjust `shooterServoDownPos/MidPos/UpPos` | `ShooterConstants.java` → servo positions |
-| **Adaptive X/B not working | X/B自适应不工作** | No Goal Tag visible (ID 20/24) | Aim at goal tag first | `DriverControls.java` → X/B button logic |
 
 | 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
 |------|----------|----------|-------------|
@@ -884,9 +915,7 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 | **转速振荡** | 使用PID而非Bang-Bang | 使用Bang-Bang控制 | `Shooter.java` → `periodic()` |
 | **球不发射** | 转速未达到 | 检查 `isShooterAtSetPoint()` | `Shooter.java` → `isShooterAtSetPoint()` |
 | **距离对应转速错误** | 校准数据 | 更新距离/转速常量 | `ShooterConstants.java` → 距离常量 |
-| **刹车不接合** | 舵机位置错误 | 调整 `brakeServoEngagedPos` | `ShooterConstants.java` → 刹车位置 |
 | **舵机角度错误** | 舵机位置值 | 调整舵机位置常量 | `ShooterConstants.java` → 舵机位置 |
-| **X/B自适应不工作** | 看不到目标标签(ID 20/24) | 先瞄准目标标签 | `DriverControls.java` → X/B 按键逻辑 |
 
 ### 10.3 Vision Issues | 视觉问题
 
@@ -962,18 +991,24 @@ Standalone drivetrain test with field-centric drive. Same logic as main TeleOp b
 |---------|----------------|----------|---------------|
 | **Turret doesn't move | 云台不动** | Motor name wrong | Check hardware map | `TurretConstants.java` → `turretMotorName` |
 | **Angle reading wrong | 角度读数错误** | Encoder not calibrated | Call `resetEncoder()` | `Turret.java` → `resetEncoder()` |
-| **Can't switch to Hard Lock | 无法切换硬锁定** | No AprilTag visible | Aim at goal tag first | Need to see tag 20 or 24 |
+| **Can't switch modes | 无法切换模式** | Turret is unwinding | Wait for unwind to complete | Check `isUnwinding()` |
 | **Hard Lock doesn't aim | 硬锁定不瞄准** | No absolute position | Check `hasAbsolutePosition()` | `MecanumDrivePinpoint.java` |
+| **TX tracking not working | TX跟踪不工作** | Seeing wrong tag | Check `getTrackingModeString()` | Should be "TX_TRACKING" |
+| **Always using inertial | 一直用惯性** | tagId ≠ targetTagId | Check `getCurrentDetectedTagId()` vs `getTargetTagId()` |
 | **PID oscillates | PID振荡** | kP too high | Reduce `kP` | `TurretConstants.java` → PID values |
+| **Turret keeps unwinding | 一直回正** | Target behind robot | Target > 100°, normal behavior | `unwindThreshold` |
 | **Turret hits limit | 云台撞限位** | Software limit wrong | Adjust `minAngleDeg/maxAngleDeg` | `TurretConstants.java` |
 
 | 问题 | 可能原因 | 解决方案 | 文件 & 方法 |
 |------|----------|----------|-------------|
 | **云台不动** | 电机名称错误 | 检查硬件映射 | `TurretConstants.java` → 电机名称 |
 | **角度读数错误** | 编码器未校准 | 调用 `resetEncoder()` | `Turret.java` → `resetEncoder()` |
-| **无法切换硬锁定** | 看不到AprilTag | 先瞄准目标标签 | 需要看到标签20或24 |
+| **无法切换模式** | 云台正在回正 | 等待回正完成 | 检查 `isUnwinding()` |
 | **硬锁定不瞄准** | 没有绝对位置 | 检查 `hasAbsolutePosition()` | `MecanumDrivePinpoint.java` |
+| **TX跟踪不工作** | 看到的是对方tag | 检查 `getTrackingModeString()` | 应该显示 "TX_TRACKING" |
+| **一直用惯性导航** | tagId ≠ targetTagId | 检查当前tag和目标tag | 对比两个ID |
 | **PID振荡** | kP过高 | 减小 `kP` | `TurretConstants.java` → PID值 |
+| **一直回正** | 目标在机器人后方 | 目标角度>100°，正常行为 | `unwindThreshold` |
 | **云台撞限位** | 软件限位错误 | 调整角度限制 | `TurretConstants.java` |
 
 ---
@@ -997,10 +1032,15 @@ Available in `TeleOp.java`:
 | `CAN FIRE` | Aligned enough to fire | 是否对准可发射 |
 | **Turret | 云台** | |
 | `Lock Mode` | MANUAL/SOFT_LOCK/HARD_LOCK | 锁定模式 |
+| `Tracking Mode` | TX_TRACKING/INERTIAL/UNWINDING | 跟踪模式 |
 | `Angle` | Current turret angle (°) | 当前云台角度 |
 | `Target` | Target turret angle (°) | 目标云台角度 |
 | `On Target` | Hard lock: aiming at goal? | 硬锁定：是否瞄准目标 |
 | `Dist to Goal` | Hard lock: distance to goal | 硬锁定：到目标距离 |
+| `Detected Tag` | Currently detected tag ID | 当前检测到的标签 |
+| `Target Tag` | Alliance target tag (20/24) | 联盟目标标签 |
+| `TX Active` | Is TX tracking active? | TX跟踪是否激活 |
+| `Unwinding` | Is turret unwinding to 0°? | 是否正在回正 |
 
 ### Vision Debug | 视觉调试
 

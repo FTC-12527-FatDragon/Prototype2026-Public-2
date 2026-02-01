@@ -17,6 +17,8 @@ import org.firstinspires.ftc.teamcode.subsystems.shooter.ShooterConstants;
 import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 import org.firstinspires.ftc.teamcode.utils.Util;
 
+import com.arcrobotics.ftclib.controller.PIDController;
+
 /**
  * Subsystem for the Mecanum Drive train using GoBilda Pinpoint Odometry for localization.
  * This class handles motor control, odometry updates, and movement logic.
@@ -50,6 +52,50 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     
     // Flag to track if we have a valid absolute position
     private boolean hasAbsolutePosition = false;
+    
+    // ==================== AUTO-AIM ====================
+    private final PIDController alignPID;
+    
+    // Auto-aim PID constants (tunable via Dashboard)
+    // Distance-adaptive: actual kP = kP_alignH * (1 - distanceFactor * kP_distanceScale)
+    public static double kP_alignH = 0.025;      // Base P gain for auto-aim
+    public static double kI_alignH = 0;          // I gain for auto-aim
+    public static double kD_alignH = 0.008;      // D gain for auto-aim (damping)
+    public static double kP_near = 0.012;        // P gain at close range (weaker to prevent overshoot)
+    public static double kP_far = 0.03;          // P gain at far range (stronger for precision)
+    
+    // Deadband with hysteresis to prevent oscillation at boundary
+    public static double alignDeadbandNear = 3.0;      // Entry deadband for close shots (degrees)
+    public static double alignDeadbandFar = 0.5;       // Entry deadband for far shots (degrees)
+    public static double alignHysteresis = 1.5;        // Exit deadband = entry + hysteresis
+    
+    // Auto-aim offset constants
+    public static double farDistanceThreshold = 94;    // Distance threshold for offset (inches)
+    public static double farOffsetDegrees = 2.0;       // Offset in degrees for far shots
+    
+    // Low-pass filter for tx smoothing (reduces jitter from Limelight noise)
+    public static double txFilterAlpha = 0.3;          // Filter coefficient (0-1, lower = smoother)
+    private double filteredTx = 0;
+    private boolean txFilterInitialized = false;
+    
+    // Current deadband (set based on distance)
+    private double currentDeadband = alignDeadbandNear;
+    
+    // Hysteresis state: true = inside deadband (aligned), false = outside (aligning)
+    private boolean isAligned = false;
+    
+    // Cached offset to prevent jitter (Mode 1: tx-based)
+    private double currentOffset = 0;
+    private boolean offsetLocked = false;
+    
+    // Locked target goal for heading-based alignment (Mode 2: no tag visible)
+    private boolean headingTargetLocked = false;
+    private double lockedTargetGoalX = 0;
+    private double lockedTargetGoalY = 0;
+    
+    // Last aligned tag for search mode
+    private int lastAlignedTagId = -1;
+    private boolean hasLastAlignedTag = false;
 
     /**
      * Constructor for MecanumDrivePinpoint.
@@ -101,6 +147,9 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         rightBackMotor.setDirection(DcMotorSimple.Direction.FORWARD);
 
         lastPose = new Pose2D(DriveConstants.distanceUnit, 0, 0, DriveConstants.angleUnit, 0);
+        
+        // Initialize auto-aim PID controller
+        alignPID = new PIDController(kP_alignH, kI_alignH, kD_alignH);
         
         // Initialize absolute field coordinates to (0, 0, 0)
         absoluteX = 0;
@@ -365,13 +414,91 @@ public class MecanumDrivePinpoint extends SubsystemBase {
 
     // ==================== ABSOLUTE POSITION UPDATE ====================
     
+    // Turret geometry constants (from TurretConstants, in mm then converted to inches)
+    // Turret center is 47mm behind chassis center
+    private static final double TURRET_OFFSET_INCHES = 47.0 / 25.4;  // ~1.85"
+    // Limelight is 140.86521mm from turret center
+    private static final double LIMELIGHT_OFFSET_INCHES = 140.86521 / 25.4;  // ~5.55"
+    
     /**
-     * Updates absolute field position from Vision (when goal tag is visible).
-     * Call this when tag 20 or 24 is detected.
+     * Updates absolute field position from Vision with turret angle compensation.
+     * 
+     * Limelight is mounted on the turret, so its position relative to chassis center
+     * changes with turret angle. This method calculates:
+     * 1. Limelight position in field (from vision)
+     * 2. Limelight offset from chassis center (based on turret angle)
+     * 3. Chassis center = Limelight position - offset (transformed to field coordinates)
+     * 
+     * Coordinate system:
+     * - Chassis: +X = forward, +Y = right
+     * - Field: standard FTC field coordinates
+     * - Turret: 0° = forward, + = clockwise (right)
+     * 
+     * @param vision The Vision subsystem
+     * @param turretAngleRad Current turret angle in radians (0 = forward, + = right)
+     * @return true if vision update was successful
+     */
+    public boolean updateAbsolutePositionFromVisionWithTurret(Vision vision, double turretAngleRad) {
+        int tagId = vision.getDetectedTagId();
+        boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
+        
+        if (!isGoalTag) {
+            return false;
+        }
+        
+        Pose3D visionPose = vision.getRobotPose();
+        if (visionPose == null) {
+            return false;
+        }
+        
+        // Step 1: Get Limelight's position in field (from vision)
+        // Note: visionPoseToPinpointPose returns what Limelight thinks is "robot" position
+        // But since Limelight is on turret, this is actually Limelight's position
+        Pose2D limelightPose = Util.visionPoseToPinpointPose(visionPose);
+        double limelightX = limelightPose.getX(DistanceUnit.INCH);
+        double limelightY = limelightPose.getY(DistanceUnit.INCH);
+        double limelightHeading = limelightPose.getHeading(AngleUnit.RADIANS);  // This is LIMELIGHT's heading!
+        
+        // Step 2: Calculate ROBOT heading from Limelight heading
+        // Limelight heading = Robot heading + Turret angle (in field coordinates)
+        // Therefore: Robot heading = Limelight heading - Turret angle
+        double robotHeading = Util.normalizeAngleRadians(limelightHeading - turretAngleRad);
+        
+        // Step 3: Calculate Limelight offset from chassis center (in chassis coordinates)
+        // Chassis coordinate system: +X = forward, +Y = right
+        // Turret center is TURRET_OFFSET behind chassis center (negative X)
+        // Limelight is LIMELIGHT_OFFSET from turret center at angle turretAngleRad
+        double limelightOffsetX_chassis = -TURRET_OFFSET_INCHES + LIMELIGHT_OFFSET_INCHES * Math.cos(turretAngleRad);
+        double limelightOffsetY_chassis = LIMELIGHT_OFFSET_INCHES * Math.sin(turretAngleRad);
+        
+        // Step 4: Transform offset from chassis coordinates to field coordinates
+        // Rotation by ROBOT heading (not Limelight heading!)
+        double cosH = Math.cos(robotHeading);
+        double sinH = Math.sin(robotHeading);
+        double limelightOffsetX_field = limelightOffsetX_chassis * cosH - limelightOffsetY_chassis * sinH;
+        double limelightOffsetY_field = limelightOffsetX_chassis * sinH + limelightOffsetY_chassis * cosH;
+        
+        // Step 5: Chassis center = Limelight position - offset
+        absoluteX = limelightX - limelightOffsetX_field;
+        absoluteY = limelightY - limelightOffsetY_field;
+        absoluteHeading = robotHeading;  // Now this is the correct ROBOT heading
+        
+        hasAbsolutePosition = true;
+        
+        // Update lastOdoPose for delta calculation when vision is lost
+        lastOdoPose = getPose();
+        
+        return true;
+    }
+    
+    /**
+     * Updates absolute field position from Vision (LEGACY - no turret compensation).
+     * @deprecated Use updateAbsolutePositionFromVisionWithTurret() when turret is available.
      * 
      * @param vision The Vision subsystem
      * @return true if vision update was successful
      */
+    @Deprecated
     public boolean updateAbsolutePositionFromVision(Vision vision) {
         int tagId = vision.getDetectedTagId();
         boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
@@ -386,6 +513,7 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         }
         
         // Convert Limelight Pose3D to field coordinates using shared utility
+        // WARNING: This assumes Limelight is at chassis center (no turret compensation)
         Pose2D convertedPose = Util.visionPoseToPinpointPose(visionPose);
         absoluteX = convertedPose.getX(DistanceUnit.INCH);
         absoluteY = convertedPose.getY(DistanceUnit.INCH);
@@ -635,6 +763,158 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     public boolean isAutoFireAllowed(double tx) {
         // Target is tx = 0 (centered)
         return Math.abs(tx) < ShooterConstants.autoFireTxThreshold;
+    }
+    
+    // ==================== AUTO-AIM METHODS ====================
+    
+    /**
+     * Calculates turn power for auto-aim using vision feedback.
+     * Features:
+     * - Low-pass filtered tx for stability (reduces Limelight noise)
+     * - Hysteresis deadband to prevent oscillation at boundary
+     * - Distance-adaptive PID (weaker at close range, stronger at far range)
+     * - Distance-based offset compensation for far shots
+     * 
+     * @param vision The Vision subsystem.
+     * @return Turn power (-1 to 1). Positive = turn right, Negative = turn left.
+     */
+    public double getAlignTurnPower(Vision vision) {
+        int tagId = vision.getDetectedTagId();
+        boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
+        
+        if (isGoalTag) {
+            // ==================== MODE 1: TX-BASED ALIGNMENT ====================
+            // Record which tag we're aligning to
+            lastAlignedTagId = tagId;
+            hasLastAlignedTag = true;
+            
+            // Get raw tx value (horizontal offset in degrees)
+            double rawTx = vision.getTx();
+            
+            // ========== LOW-PASS FILTER ==========
+            // Smooths out Limelight noise, especially noticeable at close range
+            if (!txFilterInitialized) {
+                filteredTx = rawTx;
+                txFilterInitialized = true;
+            } else {
+                // filteredTx = alpha * rawTx + (1-alpha) * filteredTx
+                filteredTx = txFilterAlpha * rawTx + (1 - txFilterAlpha) * filteredTx;
+            }
+            double tx = filteredTx;
+            
+            // ========== DISTANCE-BASED PARAMETERS ==========
+            // Lock offset and deadband once determined
+            double distance = vision.getDistanceToTag();
+            
+            if (!offsetLocked) {
+                if (distance > 0 && distance > farDistanceThreshold) {
+                    // Far shot: apply offset and use smaller deadband
+                    currentOffset = (tagId == Vision.BLUE_GOAL_TAG_ID) ? -farOffsetDegrees : farOffsetDegrees;
+                    currentDeadband = alignDeadbandFar;
+                } else {
+                    // Close shot: no offset, larger deadband
+                    currentOffset = 0;
+                    currentDeadband = alignDeadbandNear;
+                }
+                offsetLocked = true;
+            }
+            
+            // ========== DISTANCE-ADAPTIVE PID ==========
+            // Interpolate kP between near and far values based on distance
+            double effectiveKp;
+            if (distance <= 0) {
+                effectiveKp = kP_alignH;  // Fallback
+            } else if (distance < 40) {
+                effectiveKp = kP_near;  // Close range: weak P to prevent overshoot
+            } else if (distance > 100) {
+                effectiveKp = kP_far;   // Far range: strong P for precision
+            } else {
+                // Linear interpolation between 40" and 100"
+                double ratio = (distance - 40) / 60.0;
+                effectiveKp = kP_near + (kP_far - kP_near) * ratio;
+            }
+            alignPID.setPID(effectiveKp, kI_alignH, kD_alignH);
+            
+            // ========== HYSTERESIS DEADBAND ==========
+            // Entry threshold: currentDeadband
+            // Exit threshold: currentDeadband + hysteresis
+            // This prevents oscillation at the deadband boundary
+            double targetTx = -currentOffset;
+            double error = Math.abs(tx - targetTx);
+            
+            double entryThreshold = currentDeadband;
+            double exitThreshold = currentDeadband + alignHysteresis;
+            
+            if (isAligned) {
+                // Currently aligned: stay aligned until error exceeds exit threshold
+                if (error > exitThreshold) {
+                    isAligned = false;  // Exit aligned state, start correcting
+                } else {
+                    // Still aligned, but DON'T reset PID (keep D term history)
+                    return 0;
+                }
+            } else {
+                // Currently aligning: become aligned when error drops below entry threshold
+                if (error < entryThreshold) {
+                    isAligned = true;  // Enter aligned state
+                    return 0;
+                }
+            }
+            
+            // ========== PID CONTROL ==========
+            double turn = -alignPID.calculate(tx, targetTx);
+            return Math.max(-1, Math.min(1, turn));
+            
+        } else {
+            // No goal tag visible, reset state
+            offsetLocked = false;
+            currentOffset = 0;
+            headingTargetLocked = false;
+            isAligned = false;
+            txFilterInitialized = false;
+            alignPID.reset();
+            return 0;
+        }
+    }
+    
+    /**
+     * Calculates the heading (in radians) from robot's absolute position to a goal.
+     * Returns the heading where robot's BACK faces the goal (for shooting).
+     * 
+     * @param goalX Goal X coordinate
+     * @param goalY Goal Y coordinate
+     * @return Target heading in radians
+     */
+    private double calculateHeadingToGoal(double goalX, double goalY) {
+        double dx = goalX - absoluteX;
+        double dy = goalY - absoluteY;
+        // atan2 gives angle from robot to goal
+        // Subtract PI because we want robot's BACK to face the goal
+        return Math.atan2(dy, dx) - Math.PI;
+    }
+    
+    /**
+     * Resets the auto-aim offset lock, heading target lock, filter, and PID.
+     * Call this when releasing the aim button.
+     */
+    public void resetAutoAimOffset() {
+        // Reset tx-based offset lock (Mode 1)
+        offsetLocked = false;
+        currentOffset = 0;
+        
+        // Reset hysteresis state
+        isAligned = false;
+        
+        // Reset low-pass filter
+        txFilterInitialized = false;
+        filteredTx = 0;
+        
+        // Reset heading-based target lock (Mode 2)
+        headingTargetLocked = false;
+        lockedTargetGoalX = 0;
+        lockedTargetGoalY = 0;
+        
+        alignPID.reset();
     }
     
     @Override

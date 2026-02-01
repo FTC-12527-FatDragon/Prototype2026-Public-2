@@ -40,13 +40,24 @@ public class Robot {
         transit = new Transit(hardwareMap);
         intake = new Intake(hardwareMap);
         
-        // VISION/LIMELIGHT DISABLED
-        vision = null;
-        // vision = new Vision(hardwareMap);
+        // ==================== ENABLE/DISABLE SUBSYSTEMS ====================
+        // Set to true to enable, false to disable (if hardware not present)
+        boolean ENABLE_VISION = false;   // Requires Limelight3A
+        boolean ENABLE_TURRET = false;   // Requires turret motor + encoder
         
-        // TURRET DISABLED
-        turret = null;
-        // turret = new Turret(hardwareMap);
+        // Vision (Limelight)
+        if (ENABLE_VISION) {
+            vision = new Vision(hardwareMap);
+        } else {
+            vision = null;
+        }
+        
+        // Turret
+        if (ENABLE_TURRET) {
+            turret = new Turret(hardwareMap);
+        } else {
+            turret = null;
+        }
     }
 }
 
