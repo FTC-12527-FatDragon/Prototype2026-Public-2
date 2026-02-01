@@ -51,14 +51,15 @@ public class TurretConstants {
     
     // ==================== POSITION PID (Soft Lock) ====================
     // PID constants for position control (angle in degrees)
-    public static double kP = 0.0;      // TODO: tune
-    public static double kI = 0.0;      // TODO: tune
-    public static double kD = 0.0;      // TODO: tune
+    // Tune via FTC Dashboard: http://192.168.43.1:8080/dash → TurretConstants
+    public static double kP = 0.015;    // Start low, increase until responsive
+    public static double kI = 0.0;      // Usually keep at 0 for turret
+    public static double kD = 0.001;    // Add if oscillating
     
     // Position control parameters
-    public static double positionTolerance = 0.0;    // Degrees, within this = at setpoint (TODO: tune)
-    public static double maxOutputPower = 0.0;       // Maximum output from PID (TODO: tune)
-    public static double minOutputPower = 0.0;       // Minimum output to overcome static friction (TODO: tune)
+    public static double positionTolerance = 2.0;    // Degrees, within this = at setpoint
+    public static double maxOutputPower = 0.5;       // Maximum output from PID (start low!)
+    public static double minOutputPower = 0.05;      // Minimum output to overcome static friction
     
     // Feedforward coefficient for PIDF controller
     // In FTCLib, F term is multiplied by setpoint: output += kF * setpoint

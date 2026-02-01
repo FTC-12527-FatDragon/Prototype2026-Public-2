@@ -10,7 +10,7 @@ import android.graphics.Color;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.arcrobotics.ftclib.controller.PIDController;
+import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.ColorSensor;
@@ -28,13 +28,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Queue;
 
-class PID {
-    public double kP, kI, kD;
+class PIDF {
+    public double kP, kI, kD, kF;
 
-    PID(int kP, int kI, int kD) {
+    PIDF(double kP, double kI, double kD, double kF) {
         this.kP = kP;
         this.kI = kI;
         this.kD = kD;
+        this.kF = kF;
     }
 }
 
@@ -50,22 +51,22 @@ public class DashTuner extends LinearOpMode {
 
     public static boolean[] isVelocityCloseLoop = new boolean[4];
 
-    public static PID[] PIDs = {
-            new PID(0, 0, 0),
-            new PID(0, 0, 0),
-            new PID(0, 0, 0),
-            new PID(0, 0, 0)
+    public static PIDF[] PIDFs = {
+            new PIDF(0, 0, 0, 0),
+            new PIDF(0, 0, 0, 0),
+            new PIDF(0, 0, 0, 0),
+            new PIDF(0, 0, 0, 0)
     };
 
     DcMotorEx[] motors = new DcMotorEx[4];
 
     Servo[] servos = new Servo[4];
 
-    PIDController[] pidControllers = {
-            new PIDController(0, 0, 0),
-            new PIDController(0, 0, 0),
-            new PIDController(0, 0, 0),
-            new PIDController(0, 0, 0)
+    PIDFController[] pidfControllers = {
+            new PIDFController(0, 0, 0, 0),
+            new PIDFController(0, 0, 0, 0),
+            new PIDFController(0, 0, 0, 0),
+            new PIDFController(0, 0, 0, 0)
     };
 
     public static String colorSensorName = "";
@@ -97,7 +98,7 @@ public class DashTuner extends LinearOpMode {
         for (int i = 0; i < 4; i++) {
             if (!motorName[i].isEmpty()) {
                 motors[i] = hardwareMap.get(DcMotorEx.class, motorName[i]);
-                pidControllers[i].setPID(PIDs[i].kP, PIDs[i].kI, PIDs[i].kD);
+                pidfControllers[i].setPIDF(PIDFs[i].kP, PIDFs[i].kI, PIDFs[i].kD, PIDFs[i].kF);
             }
             if (!servoName[i].isEmpty()) {
                 servos[i] = hardwareMap.get(Servo.class, servoName[i]);
@@ -116,17 +117,18 @@ public class DashTuner extends LinearOpMode {
                 if (!motorName[i].isEmpty()) {
                     if (slaveTo[i] != -1) {
                         if (closeLoop[i])
-                            motors[i].setPower(-pidControllers[(int) slaveTo[i]].calculate(motors[(int)
+                            motors[i].setPower(-pidfControllers[(int) slaveTo[i]].calculate(motors[(int)
                                     slaveTo[i]].getVelocity(), motorTarget[(int) slaveTo[i]]));
                         else
                             motors[i].setPower(-motorTarget[(int) slaveTo[i]]);
                     }
                     else if (closeLoop[i] && isVelocityCloseLoop[i]) {
-                        pidControllers[i].setPID(PIDs[i].kP, PIDs[i].kI, PIDs[i].kD);
+                        // Velocity closed-loop with PIDF
+                        pidfControllers[i].setPIDF(PIDFs[i].kP, PIDFs[i].kI, PIDFs[i].kD, PIDFs[i].kF);
 
                         double v = motors[i].getVelocity();
 
-                        motors[i].setPower(pidControllers[i].calculate(v, motorTarget[i]));
+                        motors[i].setPower(pidfControllers[i].calculate(v, motorTarget[i]));
 
                         TelemetryPacket packet = new TelemetryPacket();
                         packet.put("targetVelocity " + i, motorTarget[i]);
@@ -136,12 +138,13 @@ public class DashTuner extends LinearOpMode {
                         dashboard.sendTelemetryPacket(packet);
                     }
                     else if (closeLoop[i] && !isVelocityCloseLoop[i]) {
-                        pidControllers[i].setPID(PIDs[i].kP, PIDs[i].kI, PIDs[i].kD);
+                        // Position closed-loop with PIDF
+                        pidfControllers[i].setPIDF(PIDFs[i].kP, PIDFs[i].kI, PIDFs[i].kD, PIDFs[i].kF);
 
                         double pos = motors[i].getCurrentPosition();
                         double v = motors[i].getVelocity();  // Get velocity for TPS
 
-                        motors[i].setPower(pidControllers[i].calculate(pos, motorTarget[i]));
+                        motors[i].setPower(pidfControllers[i].calculate(pos, motorTarget[i]));
 
                         TelemetryPacket packet = new TelemetryPacket();
                         packet.put("targetPosition " + i, motorTarget[i]);
