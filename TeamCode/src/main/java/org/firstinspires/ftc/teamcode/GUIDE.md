@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-02 (Turret Home + Open Loop Control)
+> FTC Team 12527 | Last Updated: 2026-02-02 (Autonomous Path Programs)
 
 ---
 
@@ -562,77 +562,118 @@ if (currentPose.getX() < -10 || currentPose.getY() < -10) {
 
 ### 5.1 Far Auto | 远起点自动
 
-**Files | 文件**: `BlueFar.java`, `RedFar.java`, `BlueFarShanghai.java`, etc.
+**Files | 文件**: `BlueFarAuto.java`, `RedFarAuto.java`
 
-**Strategy | 策略**: Start far from goal, push samples into scoring zone.
+**Strategy | 策略**: Continuous intake/shoot cycles from far starting position.
 
-从远离目标的位置出发，将样本推入得分区。
+从远起点位置持续执行采集/发射循环。
+
+#### Available Programs | 可用程序
+
+| Program | Alliance | Starting Position |
+|---------|----------|-------------------|
+| Blue Far Auto | Blue | (54.97, 9.10) |
+| Red Far Auto | Red | (89.03, 9.10) |
 
 #### Path Structure | 路径结构
 
 ```
-Start → Shoot (preload) → Sample1 → PushZone → Sample2 → Shoot → ... → Park
-起点   → 发射（预装）    → 样本1  → 推球区    → 样本2  → 发射  → ... → 停靠
+Start → Intake Approach (curve) → Intake Position → [Wait] → Shoot Position → [Shoot]
+     ↓
+     └── LOOP: Intake → [Wait] → Shoot (repeats until auto ends)
 ```
 
-#### Typical Far Auto Sequence | 典型远起点自动序列
+#### Key Positions | 关键位置
+
+| Position | Blue (x, y) | Red (x, y) |
+|----------|-------------|------------|
+| START | (54.97, 9.10) | (89.03, 9.10) |
+| INTAKE | (9.60, 8.13) | (134.40, 8.13) |
+| SHOOT | (54.97, 9.10) | (89.03, 9.10) |
+
+#### Sequence | 序列
 
 ```java
 new SequentialCommandGroup(
-    // 1. Initialize intake
-    new InstantCommand(() -> intake.startIntake()),
+    new AutoDriveCommand(follower, path1),  // Curve to approach
+    new AutoDriveCommand(follower, path2),  // To intake
+    intakeWaitCommand(),                     // Wait 1s
+    new AutoDriveCommand(follower, path3),  // To shoot
+    shootCommand(),                          // Wait 3s
     
-    // 2. Path 1: Start → Shoot Pose (with shooter acceleration)
-    new InstantCommand(() -> shooter.setShooterState(FAST)),
-    new AutoDriveCommand(follower, path1, 3000),  // 3s timeout
-    new TransitCommand(transit, shooter).withTimeout(1300),
-    
-    // 3. Path 2: Shoot → Sample pickup
-    new InstantCommand(() -> shooter.setShooterState(STOP)),
-    new AutoDriveCommand(follower, path2, 5000),
-    
-    // 4. Path 3: Push sample to zone
-    new AutoDriveCommand(follower, path3, 4000),
-    
-    // 5. Path 4: Return to shoot
-    new InstantCommand(() -> shooter.setShooterState(FAST)),
-    new AutoDriveCommand(follower, path4, 4000),
-    new TransitCommand(transit, shooter).withTimeout(1300),
-    
-    // 6. Park
-    new AutoDriveCommand(follower, pathPark, 3000)
+    // LOOP: Repeats 10 times (auto ends before completing all)
+    oneCycleCommand(),
+    oneCycleCommand(),
+    // ...
 );
 ```
 
 ### 5.2 Near Auto | 近起点自动
 
-**Files | 文件**: `BlueNear.java`, `RedNear.java`, etc.
+**Files | 文件**: `BlueNearAuto.java`, `RedNearAuto.java`, `BlueNearInfinite.java`, `RedNearInfinite.java`
 
-**Strategy | 策略**: Start near goal, pick up samples and shoot directly.
+**Strategy | 策略**: Sample collection from multiple positions with shooting cycles.
 
-从靠近目标的位置出发，拾取样本并直接发射。
+从多个位置采集样本并发射。
 
-#### Path Structure | 路径结构
+#### Available Programs | 可用程序
+
+| Program | Alliance | Description |
+|---------|----------|-------------|
+| Blue Near Auto | Blue | 9-path sample collection |
+| Red Near Auto | Red | Mirrored from Blue |
+| Blue Near Infinite | Blue | Extended with 3x Sample 2 cycles |
+| Red Near Infinite | Red | Mirrored from Blue Infinite |
+
+#### BlueNearAuto Path Structure | 路径结构
 
 ```
-Start → Shoot → Sample1 → Intermediate → Shoot → Sample2 → Shoot → ... → Park
-起点   → 发射  → 样本1   → 中间点      → 发射  → 样本2   → 发射  → ... → 停靠
+Start → Shoot → Sample1(far) → Intake1 → [Shoot] → Intake2 → [Shoot] → Sample2(bottom) → [Shoot] → Final
 ```
+
+#### BlueNearInfinite Path Structure | 扩展版路径结构
+
+```
+Start → Shoot → Sample1 → Intake1 → [Shoot]
+     ↓
+     └── Sample2 Cycle (x3): Shoot → Sample2(145°) → [Shoot]
+     ↓
+     └── BlueNear Path 5+: Intake2 → [Shoot] → Sample3 → [Shoot] → Final
+```
+
+#### Key Positions (Blue) | 关键位置（蓝方）
+
+| Position | Coordinates | Heading |
+|----------|-------------|---------|
+| START | (25.68, 127.97) | 90° |
+| SHOOT | (45.20, 101.15) | 180° |
+| SAMPLE1 | (8.79, 59.30) | 180° |
+| INTAKE1 | (16.45, 69.66) | 180° |
+| SAMPLE2 | (12.08, 61.02) | 145° |
+| INTAKE2 | (16.17, 83.46) | 180° |
+| SAMPLE3 | (14.19, 35.31) | 180° |
+| FINAL | (15.96, 101.11) | 180° |
+
+#### Coordinate Mirroring | 坐标对称
+
+All Red variants are mirrored from Blue at x=72:
+- `new_x = 144 - old_x`
+- `heading 180° → 0°`
+- `heading 145° → 35°`
 
 #### Key Differences | 关键区别
 
 | Aspect | Far Auto | Near Auto |
 |--------|----------|-----------|
-| Distance | 128" to goal | 24" to goal |
-| Speed | FAST (1420 TPS) | SLOW (700 TPS) |
-| Strategy | Push samples | Direct pickup |
+| Distance | ~55" to goal | ~25" to goal |
+| Speed | SLOW | SLOW |
+| Strategy | Continuous loops | Multi-position collection |
 | Path type | Mostly straight | Mostly curved |
 
 | 方面 | 远起点 | 近起点 |
 |------|--------|--------|
-| 距离 | 128" 到目标 | 24" 到目标 |
-| 转速 | FAST (1420 TPS) | SLOW (700 TPS) |
-| 策略 | 推球 | 直接拾取 |
+| 距离 | ~55" 到目标 | ~25" 到目标 |
+| 策略 | 持续循环 | 多点采集 |
 | 路径类型 | 多为直线 | 多为曲线 |
 
 ---

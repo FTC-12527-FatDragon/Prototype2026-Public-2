@@ -4,6 +4,50 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-02] - Autonomous Path Programs
+
+### Added
+- **BlueFarAuto** (`opmodes/autos/BlueFarAuto.java`)
+    - Blue Alliance Far side continuous intake/shoot auto
+    - Loops intake → shoot cycles until auto ends
+    - Key positions: START (54.97, 9.10), INTAKE (9.60, 8.13), SHOOT (54.97, 9.10)
+
+- **RedFarAuto** (`opmodes/autos/RedFarAuto.java`)
+    - Red Alliance Far side (mirrored from BlueFarAuto at x=72)
+    - Heading mirrored: 180° → 0°
+
+- **BlueNearAuto** (`opmodes/autos/BlueNearAuto.java`)
+    - Blue Alliance Near side sample collection auto
+    - 9-path sequence collecting samples from multiple positions
+    - 3 shoot cycles with sample collection
+
+- **RedNearAuto** (`opmodes/autos/RedNearAuto.java`)
+    - Red Alliance Near side (mirrored from BlueNearAuto at x=72)
+
+- **BlueNearInfinite** (`opmodes/autos/BlueNearInfinite.java`)
+    - Extended Blue Near auto with Sample 2 collection repeated 3 times
+    - New 6-path intro + BlueNear Path 5+ continuation
+    - Angled intake at 145° for Sample 2
+
+- **RedNearInfinite** (`opmodes/autos/RedNearInfinite.java`)
+    - Red Alliance version (mirrored, 35° angle for Sample 2)
+
+### Technical Details
+- All paths use **Pedro Pathing** library (`com.pedropathing:ftc:2.0.4`)
+- Path types: `BezierLine` (straight), `BezierCurve` (with control points)
+- `setLinearHeadingInterpolation()` for smooth heading changes
+- `PathChain` rebuilt dynamically for repeated cycles (only usable once)
+- `AutoDriveCommand` wraps follower for Command-based integration
+
+### Coordinate Mirroring (x=72)
+| Position | Blue x | Red x | Formula |
+|----------|--------|-------|---------|
+| Any | x | 144-x | Mirror |
+| Heading 180° | 180° | 0° | Mirror |
+| Heading 145° | 145° | 35° | 180-145=35 |
+
+---
+
 ## [2026-02-02] - Turret Home Function & Open Loop Control
 
 ### Added
