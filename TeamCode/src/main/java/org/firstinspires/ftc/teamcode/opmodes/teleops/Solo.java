@@ -1,9 +1,9 @@
 package org.firstinspires.ftc.teamcode.opmodes.teleops;
 
 /**
- * Main TeleOp OpMode - Chassis Auto-Aim.
- * Field-centric Mecanum drive with CHASSIS auto-aim (turret locked at 0°).
- * Turret is ALWAYS soft-locked at 0° (forward), chassis handles aiming.
+ * Main TeleOp OpMode - D-Pad Turret Control.
+ * Field-centric Mecanum drive with manual turret control via D-Pad.
+ * Turret starts at 0° (forward), D-Pad Left/Right adjusts target position.
  * 
  * For TURRET auto-aim (hard lock), use SoloBlue or SoloRed.
  */
@@ -30,12 +30,14 @@ import org.firstinspires.ftc.teamcode.controls.DriverControls;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
 
 /**
- * Main TeleOp - Field Centric Driving.
+ * Main TeleOp - Field Centric Driving with D-Pad Turret Control.
  * 
  * Controls:
  * - Left Stick: Move (field-centric)
  * - Right Stick: Rotate
  * - Left Stick Click: Reset heading
+ * - D-Pad Left: Turret counter-clockwise (+200 ticks)
+ * - D-Pad Right: Turret clockwise (-200 ticks)
  */
 @Config
 @Configurable
@@ -50,6 +52,10 @@ public class Solo extends CommandOpMode {
     private boolean lastIntakeDisableCombo = false;   // LT + LB
     private boolean lastShooterDisableCombo = false;  // RT + RB
     private boolean lastTurretDisableCombo = false;   // LB + RB
+    
+    // Turret home control buttons
+    private boolean lastYButton = false;  // Y = go to home
+    private boolean lastBButton = false;  // B = set current as home
 
     @Override
     public void initialize() {
@@ -120,9 +126,42 @@ public class Solo extends CommandOpMode {
         lastShooterDisableCombo = shooterDisableCombo;
         lastTurretDisableCombo = turretDisableCombo;
         
-        // Solo: Turret is ALWAYS soft-locked at 0° (forward)
-        // Chassis handles auto-aim via TeleOpDriveCommand.getAlignTurnPower()
-        // Turret.periodic() handles SOFT_LOCK automatically.
+        // ========== D-PAD TURRET MANUAL CONTROL (OPEN LOOP) ==========
+        // D-Pad Left: Counter-clockwise at 0.5 power
+        // D-Pad Right: Clockwise at 0.5 power
+        // Release: Stop (0 power)
+        boolean dpadLeft = gamepadEx1.getButton(GamepadKeys.Button.DPAD_LEFT);
+        boolean dpadRight = gamepadEx1.getButton(GamepadKeys.Button.DPAD_RIGHT);
+        
+        if (robot.turret != null) {
+            if (dpadLeft) {
+                robot.turret.setPower(0.5);  // Counter-clockwise
+            } else if (dpadRight) {
+                robot.turret.setPower(-0.5); // Clockwise
+            } else {
+                robot.turret.setPower(0);    // Stop
+            }
+        }
+        
+        // ========== TURRET HOME CONTROL ==========
+        // Y button: Go to home position (physical 0°)
+        // B button: Set current position as new home
+        boolean yButton = gamepadEx1.getButton(GamepadKeys.Button.Y);
+        boolean bButton = gamepadEx1.getButton(GamepadKeys.Button.B);
+        
+        if (yButton && !lastYButton && robot.turret != null) {
+            robot.turret.goToHome();
+        }
+        if (bButton && !lastBButton && robot.turret != null) {
+            robot.turret.setCurrentAsHome();
+        }
+        
+        lastYButton = yButton;
+        lastBButton = bButton;
+        
+        // Solo: Turret controlled by D-Pad (Left=CCW +200 ticks, Right=CW -200 ticks)
+        // Initial target is 0 ticks (0°), PID drives turret to target
+        // Turret.periodic() handles SOFT_LOCK PID control automatically.
         
         // --- Update Absolute Position for Chassis Auto-Aim ---
         // CHASSIS AUTO-AIM DISABLED - Uncomment when ready
@@ -193,11 +232,13 @@ public class Solo extends CommandOpMode {
                 gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setFastIntaking(intakeAccelerationPressed);
         
-        // --- Turret Status (Soft Lock Only) ---
+        // --- Turret Status (Open Loop Control) ---
         if (robot.turret != null) {
-            telemetry.addLine("=== TURRET ===");
-            telemetry.addData("Mode", "SOFT LOCK (fixed 0°)");
-            telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
+            telemetry.addLine("=== TURRET (OPEN LOOP) ===");
+            telemetry.addData("Current Deg", String.format("%.1f°", robot.turret.getAngleDegrees()));
+            telemetry.addData("Raw Encoder", robot.turret.getRawEncoderPosition());
+            telemetry.addData("Home Encoder", robot.turret.getHomeEncoderPosition());
+            telemetry.addLine("D-Pad: L=CCW(0.5) R=CW(-0.5) | Y=Home | B=SetHome");
         }
         
         // --- Emergency Disable Status (Gamepad2) ---

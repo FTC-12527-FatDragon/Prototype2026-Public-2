@@ -3,7 +3,7 @@ package org.firstinspires.ftc.teamcode.tests;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.arcrobotics.ftclib.controller.PIDController;
+import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -15,14 +15,15 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 
 /**
- * Chassis Align Tuner - For tuning heading PID (rotation control)
+ * Chassis Align Tuner - For tuning heading PIDF (rotation control)
  * 
  * Uses GoBilda Pinpoint for heading measurement.
+ * F term is applied manually based on error direction for static friction compensation.
  * 
  * Dashboard Controls:
  * - targetHeading: Target angle in degrees (0 = forward)
- * - enabled: Enable PID control
- * - kP, kI, kD: PID coefficients
+ * - enabled: Enable PIDF control
+ * - kP, kI, kD, kF: PIDF coefficients
  * 
  * Gamepad:
  * - A: Reset heading to 0
@@ -32,10 +33,11 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 @Config
 public class ChassisAlignTuner extends LinearOpMode {
     
-    // ==================== PID PARAMETERS ====================
+    // ==================== PIDF PARAMETERS ====================
     public static double kP = 0.02;
     public static double kI = 0.0;
     public static double kD = 0.005;
+    public static double kF = 0.05;  // Static friction compensation (applied based on error direction)
     
     // ==================== CONTROL ====================
     public static double targetHeading = 0;   // Target heading in degrees
@@ -47,7 +49,7 @@ public class ChassisAlignTuner extends LinearOpMode {
     private DcMotor leftFront, leftBack, rightFront, rightBack;
     private DcMotor turretMotor;  // Keep turret locked during test
     private com.qualcomm.hardware.gobilda.GoBildaPinpointDriver pinpoint;
-    private PIDController pidController;
+    private PIDFController pidfController;
     private FtcDashboard dashboard;
     
     private double headingOffset = 0;  // For resetting heading
@@ -87,8 +89,8 @@ public class ChassisAlignTuner extends LinearOpMode {
             com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.EncoderDirection.REVERSED);
         pinpoint.resetPosAndIMU();
         
-        // Initialize PID
-        pidController = new PIDController(kP, kI, kD);
+        // Initialize PIDF (F is applied manually based on error direction)
+        pidfController = new PIDFController(kP, kI, kD, 0);
         dashboard = FtcDashboard.getInstance();
         
         telemetry.addLine("=== CHASSIS ALIGN TUNER ===");
@@ -111,8 +113,8 @@ public class ChassisAlignTuner extends LinearOpMode {
             // Update Pinpoint
             pinpoint.update();
             
-            // Update PID from Dashboard
-            pidController.setPID(kP, kI, kD);
+            // Update PIDF from Dashboard (F is applied manually)
+            pidfController.setPIDF(kP, kI, kD, 0);
             
             // Get current heading (relative to start)
             double rawHeading = pinpoint.getPosition().getHeading(AngleUnit.DEGREES);
@@ -125,7 +127,7 @@ public class ChassisAlignTuner extends LinearOpMode {
             if (gamepad1.a) {
                 headingOffset = rawHeading;
                 targetHeading = 0;
-                pidController.reset();
+                pidfController.reset();
             }
             
             // D-Pad: Adjust target
@@ -139,12 +141,19 @@ public class ChassisAlignTuner extends LinearOpMode {
             }
             lastDpadRight = gamepad1.dpad_right;
             
-            // PID Control
+            // PIDF Control
             double turnPower = 0;
             boolean onTarget = Math.abs(error) <= tolerance;
             
             if (enabled && !onTarget) {
-                turnPower = pidController.calculate(0, error);  // We want error to be 0
+                // PID calculation - use (current, target) like turret does
+                double pidPower = pidfController.calculate(currentHeading, targetHeading);
+                
+                // Add F manually with direction awareness (static friction compensation)
+                double feedforward = (error > 0) ? kF : -kF;
+                turnPower = pidPower + feedforward;
+                
+                // Clamp to max power
                 turnPower = Math.max(-maxPower, Math.min(maxPower, turnPower));
             }
             
@@ -178,6 +187,7 @@ public class ChassisAlignTuner extends LinearOpMode {
             telemetry.addData("kP", kP);
             telemetry.addData("kI", kI);
             telemetry.addData("kD", kD);
+            telemetry.addData("kF", kF);
             telemetry.update();
         }
         

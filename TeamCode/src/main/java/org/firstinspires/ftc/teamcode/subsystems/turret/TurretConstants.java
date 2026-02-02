@@ -59,7 +59,7 @@ public class TurretConstants {
     public static double kF = 0.058;    // Static friction compensation, direction-aware
     
     // Position control parameters
-    public static double positionTolerance = 100.0;  // Ticks, within this = at setpoint (~0.83°)
+    public static double positionTolerance = 2.0;  // Degrees, within this = at setpoint
     public static double maxOutputPower = 1.0;       // Maximum output from PID
     public static double minOutputPower = 0.0;       // Minimum output
     

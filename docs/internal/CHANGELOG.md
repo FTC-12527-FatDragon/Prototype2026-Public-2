@@ -4,6 +4,51 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-02] - Turret Home Function & Open Loop Control
+
+### Added
+- **Turret Absolute Position Memory** (`Turret.java`)
+    - Encoder no longer force-reset on startup (preserves absolute position)
+    - `homeEncoderPosition`: Stores the physical 0° encoder value
+    - `startupEncoderPosition`: Records encoder value when program starts
+    - New methods:
+        - `goToHome()`: Returns turret to physical 0° position
+        - `setCurrentAsHome()`: Sets current position as new 0°
+        - `getRawEncoderPosition()`: Gets raw encoder value
+        - `getHomeEncoderPosition()`: Gets home encoder value
+
+### Changed
+- **Solo.java** - Turret Control Overhaul
+    - D-Pad control changed from **closed-loop to open-loop**:
+        - D-Pad Left: `setPower(0.5)` (counter-clockwise)
+        - D-Pad Right: `setPower(-0.5)` (clockwise)
+        - Release: `setPower(0)` (stop)
+    - Added home control buttons:
+        - **Y button**: Go to home position (physical 0°)
+        - **B button**: Set current position as new home
+    - Removed closed-loop variables (`turretTargetTicks`, `TICKS_PER_DEGREE`)
+
+- **TurretConstants.java**
+    - `positionTolerance`: Changed from `100.0` (ticks) to `2.0` (degrees)
+    - Fixed unit mismatch bug (SOFT_LOCK uses degrees, not ticks)
+
+- **Turret.java**
+    - Added `isCalibrated = true` in constructor (was defaulting to false)
+    - This bug caused SOFT_LOCK PID to never execute
+
+- **ChassisAlignTuner.java** - Upgraded to PIDF
+    - Added `kF` parameter (default 0.05) for static friction compensation
+    - Changed from `PIDController` to `PIDFController`
+    - Fixed `calculate()` parameters: `(0, error)` → `(currentHeading, targetHeading)`
+    - Now consistent with Turret PIDF logic
+
+### Fixed
+- **Intake.java**: Fixed broken comment at end of file (split across two lines)
+- **Turret SOFT_LOCK**: PID now actually executes (was blocked by `isCalibrated = false`)
+- **Turret tolerance**: Fixed unit mismatch (was comparing degrees to 100 "ticks")
+
+---
+
 ## [2026-02-02] - Turret PIDF Tuning & Test Programs
 
 ### Added

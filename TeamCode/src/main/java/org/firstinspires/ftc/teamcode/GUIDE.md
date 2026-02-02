@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-02 (Turret PIDF Tuned)
+> FTC Team 12527 | Last Updated: 2026-02-02 (Turret Home + Open Loop Control)
 
 ---
 
@@ -722,7 +722,7 @@ All `@Config` annotated classes can be tuned in real-time:
 | `Drive Only Test` | Drivetrain-only test (4 motors + Pinpoint) | 仅底盘测试 |
 | `DashTuner` | Generic PIDF tuning with encoder safety | 通用PIDF调参 + 编码器保护 |
 | `Turret Motor Tuner` | Turret-specific PIDF tuning ✅ | 云台专用PIDF调参 |
-| `Chassis Align Tuner` | Chassis rotation PID tuning | 底盘旋转PID调参 |
+| `Chassis Align Tuner` | Chassis rotation PIDF tuning | 底盘旋转PIDF调参 |
 | `Tuning` | Comprehensive tuning for all subsystems | 全子系统综合调参 |
 
 #### Drive Only Test
@@ -808,9 +808,9 @@ reverseMotor = true
 
 #### Chassis Align Tuner
 
-Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
+Heading PIDF tuner for chassis rotation. Uses Pinpoint odometry. Direction-aware kF for static friction compensation.
 
-底盘旋转 PID 调参程序。使用 Pinpoint 里程计。
+底盘旋转 PIDF 调参程序。使用 Pinpoint 里程计。方向感知 kF 用于静摩擦补偿。
 
 **Dashboard Parameters | Dashboard 参数**:
 | Parameter | Default | Description |
@@ -819,13 +819,17 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 | `targetHeading` | 0 | Target angle (degrees) |
 | `tolerance` | 2.0 | Degrees tolerance |
 | `maxPower` | 0.5 | Max rotation power |
-| `kP/kI/kD` | 0.02/0/0.005 | PID coefficients |
+| `kP` | 0.02 | Proportional coefficient |
+| `kI` | 0.0 | Integral coefficient |
+| `kD` | 0.005 | Derivative coefficient |
+| `kF` | 0.05 | Feedforward (static friction) |
 
 **Gamepad Controls | 手柄控制**:
 - **A**: Reset heading to 0° | 重置朝向
 - **D-Pad Left/Right**: ±15° adjustment | ±15° 调整
 
-**Note**: Turret motor is auto-locked (BRAKE mode) during this test.
+**Note**: Turret motor is auto-locked (BRAKE mode) during this test.  
+**Direction-Aware kF**: Same logic as turret - `feedforward = (error > 0) ? kF : -kF`
 
 ---
 
@@ -840,13 +844,16 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 | **Left Stick Button** | Reset heading | ✅ | 重置朝向 | ✅ |
 | **Right Stick Button** | Toggle turret lock | ❌ Disabled | 切换云台锁定 | ❌ 禁用 |
 | **A** | Chassis auto-aim (SOFT_LOCK only) | ⚠️ Disabled | 底盘自瞄（仅软锁） | ⚠️ 禁用 |
+| **Y** | Turret go to home (physical 0°) | ✅ | 云台回到原点 | ✅ |
+| **B** | Set current turret position as home | ✅ | 设置当前位置为原点 | ✅ |
 | **LB** | Slow shot (700 TPS) | ✅ | 近射 | ✅ |
 | **RB** | Mid shot (950 TPS) | ✅ | 中射 | ✅ |
 | **RT** | Fast shot (1420 TPS) | ✅ | 远射 | ✅ |
 | **LT** | Full power intake (1.0) + Transit fire | ✅ | 全功率进球 + 发射 | ✅ |
 | **X** | Adaptive fire (Blue) | ❌ Disabled | 自适应发射（蓝） | ❌ 禁用 |
-| **B** | Adaptive fire (Red) | ❌ Disabled | 自适应发射（红） | ❌ 禁用 |
 | **D-Pad Up** | Reverse intake | ✅ | 反转进球 | ✅ |
+| **D-Pad Left** (hold) | Turret CCW (power 0.5) | ✅ | 云台逆时针转（开环） | ✅ |
+| **D-Pad Right** (hold) | Turret CW (power -0.5) | ✅ | 云台顺时针转（开环） | ✅ |
 | **D-Pad Down** | ~~Manual brake~~ | ❌ Removed | ~~手动刹车~~ | ❌ 已删除 |
 
 ### Secondary Controller (Gamepad2) - Emergency Disable | 副手柄 - 紧急禁用
@@ -874,10 +881,21 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 > **Note**: A button triggers chassis auto-aim ONLY. Shoot buttons (LB/RB/RT) do NOT trigger auto-aim.
 > **注意**: A 键仅触发底盘自瞄。射击键不触发自瞄。
 
-#### Turret Lock Toggle | 云台锁定切换 (⚠️ DISABLED | 已禁用)
+#### Turret Manual Control (Solo) | 云台手动控制
 
-> **Note**: Turret controls are currently disabled. See `DriverControls.java` and `TeleOp.java`.
-> **注意**: 云台控制当前已禁用。
+| Control | Action | 控制 | 动作 |
+|---------|--------|------|------|
+| **D-Pad Left** (hold) | Rotate CCW at power 0.5 | 按住 | 逆时针转（0.5功率） |
+| **D-Pad Right** (hold) | Rotate CW at power -0.5 | 按住 | 顺时针转（-0.5功率） |
+| **Release** | Stop (power 0) | 松开 | 停止 |
+| **Y** | Go to home position | 按下 | 回到原点 |
+| **B** | Set current position as home | 按下 | 设置当前为原点 |
+
+> **Open Loop**: D-Pad control is pure open-loop (direct power, no PID).  
+> **开环控制**: D-Pad 是纯开环控制（直接设置功率，无 PID）。
+
+> **Home Function**: Encoder preserves absolute position across restarts. Press B to set current position as "home", then Y to return to it.  
+> **归位功能**: Encoder 会在重启后保留绝对位置。按 B 设置当前位置为"原点"，按 Y 返回原点。
 
 ---
 

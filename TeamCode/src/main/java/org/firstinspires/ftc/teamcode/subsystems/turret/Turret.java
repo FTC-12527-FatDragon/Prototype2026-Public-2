@@ -85,8 +85,16 @@ public class Turret extends SubsystemBase {
     private boolean txFilterInitialized = false;
     public static double txFilterAlpha = 0.3;  // Filter coefficient (0-1, lower = smoother)
     
-    // Encoder offset for zeroing
+    // Encoder offset for zeroing (relative to startup position)
     private int encoderOffset = 0;
+    
+    // Absolute home position (physical 0° forward, in raw encoder ticks)
+    // This is the encoder value when turret is physically at 0°
+    // Default 0 assumes first power-on with turret facing forward
+    private int homeEncoderPosition = 0;
+    
+    // Startup encoder position (raw encoder value when program started)
+    private int startupEncoderPosition = 0;
     
     // Calibration state
     private boolean isCalibrated = false;
@@ -110,9 +118,17 @@ public class Turret extends SubsystemBase {
         turretMotor.setDirection(TurretConstants.reverseMotor ? 
             DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         
-        // Reset encoder and set to RUN_WITHOUT_ENCODER (we'll do our own PID)
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        // DON'T reset encoder - preserve absolute position across restarts
+        // Only set to RUN_WITHOUT_ENCODER (we'll do our own PID)
         turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        
+        // Record startup encoder position (for calculating relative movement)
+        startupEncoderPosition = turretMotor.getCurrentPosition();
+        // Set offset so getEncoderPosition() returns 0 at startup
+        encoderOffset = startupEncoderPosition;
+        
+        // Mark as calibrated
+        isCalibrated = true;
         
         // Initialize position PIDF controller (used for both soft and hard lock)
         // F term provides static friction compensation
@@ -234,6 +250,67 @@ public class Turret extends SubsystemBase {
     public void resetEncoder() {
         encoderOffset = turretMotor.getCurrentPosition();
         isCalibrated = true;
+    }
+    
+    /**
+     * Sets the current physical position as the new "home" (0°) position.
+     * Call this when turret is physically at forward position.
+     * This updates homeEncoderPosition to the current raw encoder value.
+     */
+    public void setCurrentAsHome() {
+        homeEncoderPosition = turretMotor.getCurrentPosition();
+        // Also reset the working offset so current position = 0°
+        encoderOffset = homeEncoderPosition;
+        isCalibrated = true;
+    }
+    
+    /**
+     * Commands the turret to go to the home position (physical 0°).
+     * Uses SOFT_LOCK mode to drive to home.
+     */
+    public void goToHome() {
+        // Calculate target angle: home position relative to current offset
+        // homeEncoderPosition is the raw encoder value at physical 0°
+        // We need to convert this to degrees relative to current offset
+        int ticksFromCurrentZero = homeEncoderPosition - encoderOffset;
+        double homeDegrees = ticksToDegrees(ticksFromCurrentZero);
+        enableSoftLock(homeDegrees);
+    }
+    
+    /**
+     * Gets the raw encoder position (without offset).
+     * Useful for debugging absolute position.
+     * @return Raw encoder ticks.
+     */
+    public int getRawEncoderPosition() {
+        return turretMotor.getCurrentPosition();
+    }
+    
+    /**
+     * Gets the home encoder position.
+     * @return Home position in raw encoder ticks.
+     */
+    public int getHomeEncoderPosition() {
+        return homeEncoderPosition;
+    }
+    
+    /**
+     * Gets the startup encoder position.
+     * @return Startup position in raw encoder ticks.
+     */
+    public int getStartupEncoderPosition() {
+        return startupEncoderPosition;
+    }
+    
+    /**
+     * Converts encoder ticks to degrees.
+     * @param ticks Encoder ticks.
+     * @return Angle in degrees.
+     */
+    private double ticksToDegrees(int ticks) {
+        // 1 turret rotation = ENCODER_CPR * GEAR_RATIO ticks
+        double ticksPerTurretRotation = TurretConstants.ENCODER_CPR * TurretConstants.GEAR_RATIO;
+        return (ticks / ticksPerTurretRotation) * 360.0;
     }
 
     /**
