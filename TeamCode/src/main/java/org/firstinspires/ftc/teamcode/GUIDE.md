@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-01 (DashTuner Safety)
+> FTC Team 12527 | Last Updated: 2026-02-02 (Turret PIDF Tuned)
 
 ---
 
@@ -384,7 +384,12 @@ public enum LockMode {
 | `minAngleDeg` | -95° | Left limit |
 | `maxAngleDeg` | 95° | Right limit |
 | `unwindThreshold` | 100° | Unwind to 0° if target exceeds this |
-| `kP/kI/kD/kF` | 0/0/0/0 | Position PIDF (TODO: tune) |
+| `kP` | 0.0004 | Position P gain ✅ Tuned 2026-02-02 |
+| `kI` | 0.0 | Not used |
+| `kD` | 0.0000185 | Position D gain (damping) |
+| `kF` | 0.058 | Static friction (direction-aware!) |
+| `tolerance` | 100 ticks | ~0.83° position tolerance |
+| `reverseMotor` | true | Motor direction REVERSED |
 | `blueGoalX/Y` | (4, 140) | Blue basket position |
 | `redGoalX/Y` | (140, 140) | Red basket position |
 
@@ -715,7 +720,9 @@ All `@Config` annotated classes can be tuned in real-time:
 | OpMode | Purpose | 用途 |
 |--------|---------|------|
 | `Drive Only Test` | Drivetrain-only test (4 motors + Pinpoint) | 仅底盘测试 |
-| `DashTuner` | PIDF tuning with encoder safety | PIDF调参 + 编码器保护 |
+| `DashTuner` | Generic PIDF tuning with encoder safety | 通用PIDF调参 + 编码器保护 |
+| `Turret Motor Tuner` | Turret-specific PIDF tuning ✅ | 云台专用PIDF调参 |
+| `Chassis Align Tuner` | Chassis rotation PID tuning | 底盘旋转PID调参 |
 | `Tuning` | Comprehensive tuning for all subsystems | 全子系统综合调参 |
 
 #### Drive Only Test
@@ -768,6 +775,57 @@ Position closed-loop mode includes automatic encoder stuck detection:
 > ⚠️ **Why this matters | 为什么重要**: If encoder is disconnected/broken but PIDF keeps outputting power, motor could overheat or damage mechanism. This protection prevents that.
 > 
 > 如果编码器断开/损坏但 PIDF 持续输出功率，电机可能过热或损坏机构。此保护可防止这种情况。
+
+#### Turret Motor Tuner ✅
+
+Dedicated PIDF tuner for turret motor. All control via Dashboard.
+
+云台电机专用 PIDF 调参程序。全部通过 Dashboard 控制。
+
+**Dashboard Parameters | Dashboard 参数**:
+| Parameter | Description | 说明 |
+|-----------|-------------|------|
+| `enabled` | Enable motor control | 启用电机控制 |
+| `targetPosition` | Target position (ticks) | 目标位置 |
+| `reverseMotor` | Reverse motor direction | 反转电机方向 |
+| `tolerance` | Position tolerance (ticks) | 位置容差 |
+| `kP/kI/kD/kF` | PIDF coefficients | PIDF 系数 |
+
+**Direction-Aware kF | 方向感知 kF**:
+- kF automatically changes sign based on error direction | kF 根据误差方向自动变号
+- Positive error → +kF, Negative error → -kF | 正误差→+kF，负误差→-kF
+- This compensates static friction in BOTH directions | 补偿双向静摩擦
+
+**Tuned Values (2026-02-02) | 调试值**:
+```
+kP = 0.0004
+kI = 0.0
+kD = 0.0000185
+kF = 0.058
+tolerance = 100 ticks (~0.83°)
+reverseMotor = true
+```
+
+#### Chassis Align Tuner
+
+Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
+
+底盘旋转 PID 调参程序。使用 Pinpoint 里程计。
+
+**Dashboard Parameters | Dashboard 参数**:
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled` | false | Enable rotation control |
+| `targetHeading` | 0 | Target angle (degrees) |
+| `tolerance` | 2.0 | Degrees tolerance |
+| `maxPower` | 0.5 | Max rotation power |
+| `kP/kI/kD` | 0.02/0/0.005 | PID coefficients |
+
+**Gamepad Controls | 手柄控制**:
+- **A**: Reset heading to 0° | 重置朝向
+- **D-Pad Left/Right**: ±15° adjustment | ±15° 调整
+
+**Note**: Turret motor is auto-locked (BRAKE mode) during this test.
 
 ---
 

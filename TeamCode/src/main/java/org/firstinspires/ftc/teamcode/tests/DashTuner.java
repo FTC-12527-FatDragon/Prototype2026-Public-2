@@ -78,6 +78,7 @@ public class DashTuner extends LinearOpMode {
     private double[] lastEncoderPos = new double[4];
     private double[] encoderStuckStartTime = new double[4];
     private boolean[] encoderStuckDetected = new boolean[4];
+    private double[] startEncoderPos = new double[4];  // Position at startup for delta calculation
 
     public static String colorSensorName = "";
 
@@ -108,6 +109,8 @@ public class DashTuner extends LinearOpMode {
         for (int i = 0; i < 4; i++) {
             if (!motorName[i].isEmpty()) {
                 motors[i] = hardwareMap.get(DcMotorEx.class, motorName[i]);
+                motors[i].setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                startEncoderPos[i] = motors[i].getCurrentPosition();  // Record startup position
                 pidfControllers[i].setPIDF(PIDFs[i].kP, PIDFs[i].kI, PIDFs[i].kD, PIDFs[i].kF);
             }
             if (!servoName[i].isEmpty()) {
@@ -175,13 +178,14 @@ public class DashTuner extends LinearOpMode {
                         pidfControllers[i].setPIDF(PIDFs[i].kP, PIDFs[i].kI, PIDFs[i].kD, PIDFs[i].kF);
 
                         double pos = motors[i].getCurrentPosition();
+                        double deltaPos = pos - startEncoderPos[i];  // Delta from startup position
                         double v = motors[i].getVelocity();  // Get velocity for TPS
                         double currentTime = getRuntime();
                         
                         // ===== ENCODER SAFETY CHECK =====
                         // If encoder hasn't changed for ENCODER_TIMEOUT seconds, STOP!
                         double encoderChange = Math.abs(pos - lastEncoderPos[i]);
-                        double power = pidfControllers[i].calculate(pos, motorTarget[i]);
+                        double power = pidfControllers[i].calculate(deltaPos, motorTarget[i]);  // Use delta position
                         
                         if (Math.abs(power) > 0.05) {  // Motor is trying to move
                             if (encoderChange < ENCODER_MIN_CHANGE) {
@@ -229,7 +233,7 @@ public class DashTuner extends LinearOpMode {
 
                         TelemetryPacket packet = new TelemetryPacket();
                         packet.put("targetPosition " + i, motorTarget[i]);
-                        packet.put("currentPosition " + i, pos);
+                        packet.put("currentDeltaPosition " + i, deltaPos);  // Delta from startup
                         packet.put("TPS " + i, v);  // Ticks Per Second
                         packet.put("encoderOK " + i, !encoderStuckDetected[i]);
 

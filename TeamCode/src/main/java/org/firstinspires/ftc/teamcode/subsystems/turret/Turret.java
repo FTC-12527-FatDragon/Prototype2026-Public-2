@@ -106,7 +106,9 @@ public class Turret extends SubsystemBase {
         
         // Configure motor
         turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        turretMotor.setDirection(DcMotorSimple.Direction.FORWARD);
+        // Set motor direction based on tuning (reverseMotor = true means REVERSE)
+        turretMotor.setDirection(TurretConstants.reverseMotor ? 
+            DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         
         // Reset encoder and set to RUN_WITHOUT_ENCODER (we'll do our own PID)
         turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -833,13 +835,14 @@ public class Turret extends SubsystemBase {
                     if (Math.abs(error) <= TurretConstants.positionTolerance) {
                         outputPower = 0;
                     } else {
-                        // PIDF controller: F term provides feedforward
-                        outputPower = positionPIDF.calculate(currentAngle, targetAngleDeg);
+                        // PID controller (disable built-in F, we handle it manually)
+                        positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
+                        double pidPower = positionPIDF.calculate(currentAngle, targetAngleDeg);
                         
-                        // Min power to overcome static friction
-                        if (Math.abs(outputPower) < TurretConstants.minOutputPower && Math.abs(error) > 0) {
-                            outputPower = Math.signum(error) * TurretConstants.minOutputPower;
-                        }
+                        // Add F manually with direction awareness (static friction compensation)
+                        // F pushes in the direction of error
+                        double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                        outputPower = pidPower + feedforward;
                         
                         // Clamp to max output
                         outputPower = Math.max(-TurretConstants.maxOutputPower, 
@@ -888,10 +891,11 @@ public class Turret extends SubsystemBase {
                             if (Math.abs(error) <= TurretConstants.positionTolerance) {
                                 outputPower = 0;
                             } else {
-                                outputPower = positionPIDF.calculate(currentAngle, desiredAngle);
-                                if (Math.abs(outputPower) < TurretConstants.minOutputPower && Math.abs(error) > 0) {
-                                    outputPower = Math.signum(error) * TurretConstants.minOutputPower;
-                                }
+                                // PID + direction-aware F
+                                positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
+                                double pidPower = positionPIDF.calculate(currentAngle, desiredAngle);
+                                double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                                outputPower = pidPower + feedforward;
                                 outputPower = Math.max(-TurretConstants.maxOutputPower, 
                                                        Math.min(TurretConstants.maxOutputPower, outputPower));
                             }
@@ -948,13 +952,11 @@ public class Turret extends SubsystemBase {
                     if (Math.abs(error) <= TurretConstants.positionTolerance) {
                         outputPower = 0;  // On target
                     } else {
-                        // PIDF controller: F term provides feedforward
-                        outputPower = positionPIDF.calculate(currentAngle, desiredAngle);
-                        
-                        // Min power to overcome static friction
-                        if (Math.abs(outputPower) < TurretConstants.minOutputPower && Math.abs(error) > 0) {
-                            outputPower = Math.signum(error) * TurretConstants.minOutputPower;
-                        }
+                        // PID + direction-aware F (static friction compensation)
+                        positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
+                        double pidPower = positionPIDF.calculate(currentAngle, desiredAngle);
+                        double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                        outputPower = pidPower + feedforward;
                         
                         // Clamp to max output
                         outputPower = Math.max(-TurretConstants.maxOutputPower, 

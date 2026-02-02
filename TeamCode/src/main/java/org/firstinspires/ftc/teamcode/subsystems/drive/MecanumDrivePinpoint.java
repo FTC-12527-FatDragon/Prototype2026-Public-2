@@ -28,7 +28,7 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     // Hardware devices
     public final DcMotor leftFrontMotor, leftBackMotor, rightFrontMotor, rightBackMotor;
     private final GoBildaPinpointDriver pinpoint;
-    
+
     // Offset for heading to allow resetting heading without resetting full odometry (for field-centric drive)
     private double yawOffset;
 
@@ -37,7 +37,7 @@ public class MecanumDrivePinpoint extends SubsystemBase {
 
     // Last recorded pose
     Pose2D lastPose;
-    
+
     // Flag to track if vision calibration has been performed
     private boolean hasVisionCalibrated = false;
     
@@ -916,7 +916,7 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         
         alignPID.reset();
     }
-    
+
     @Override
     public void periodic() {
         // Update Pinpoint driver to ensure latest data is available

@@ -88,6 +88,8 @@ public class SoloEmergency extends LinearOpMode {
         
         // Turret
         turret = hardwareMap.get(DcMotor.class, "turretMotor");
+        turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);  // Reset encoder to 0 on startup
+        turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);     // Use open-loop control
         
         telemetry.addLine("=== EMERGENCY MODE ===");
         telemetry.addLine("NO SENSORS - OPEN LOOP");

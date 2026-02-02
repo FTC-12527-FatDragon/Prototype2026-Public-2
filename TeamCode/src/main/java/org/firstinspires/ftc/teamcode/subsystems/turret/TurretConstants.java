@@ -50,23 +50,22 @@ public class TurretConstants {
     public static double limelightOffsetMM = 140.86521;   // mm, limelight from turret center
     
     // ==================== POSITION PID (Soft Lock) ====================
-    // PID constants for position control (angle in degrees)
-    // Tune via FTC Dashboard: http://192.168.43.1:8080/dash → TurretConstants
-    public static double kP = 0.015;    // Start low, increase until responsive
-    public static double kI = 0.0;      // Usually keep at 0 for turret
-    public static double kD = 0.001;    // Add if oscillating
+    // PID constants for position control (in TICKS, not degrees!)
+    // Tuned via TurretMotorTuner on 2026-02-02
+    // IMPORTANT: Motor direction is REVERSED (reverseMotor = true)
+    public static double kP = 0.0004;   // Tuned 2026-02-02
+    public static double kI = 0.0;      // Keep at 0
+    public static double kD = 0.0000185;// Tuned 2026-02-02
+    public static double kF = 0.058;    // Static friction compensation, direction-aware
     
     // Position control parameters
-    public static double positionTolerance = 2.0;    // Degrees, within this = at setpoint
-    public static double maxOutputPower = 0.5;       // Maximum output from PID (start low!)
-    public static double minOutputPower = 0.05;      // Minimum output to overcome static friction
+    public static double positionTolerance = 100.0;  // Ticks, within this = at setpoint (~0.83°)
+    public static double maxOutputPower = 1.0;       // Maximum output from PID
+    public static double minOutputPower = 0.0;       // Minimum output
     
-    // Feedforward coefficient for PIDF controller
-    // In FTCLib, F term is multiplied by setpoint: output += kF * setpoint
-    // For turret position control, this can help with:
-    // - Gravity compensation (if turret is tilted)
-    // - Predictive positioning
-    public static double kF = 0.0;      // TODO: tune if needed
+    // Motor direction: true = REVERSE, false = FORWARD
+    // Determined by tuning - ensures encoder and motor direction match
+    public static boolean reverseMotor = true;
     
     // ==================== HARD LOCK (Absolute Position Tracking) ====================
     // Uses robot absolute position to calculate turret angle to goal

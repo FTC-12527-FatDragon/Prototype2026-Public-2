@@ -4,6 +4,52 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-02] - Turret PIDF Tuning & Test Programs
+
+### Added
+- **TurretMotorTuner** (`tests/TurretMotorTuner.java`)
+    - Dedicated test program for turret PIDF tuning
+    - Dashboard-only control (no manual gamepad input)
+    - Direction-aware kF (static friction compensation in both directions)
+    - `reverseMotor` option via `setDirection()` 
+    - Gamepad A to reset encoder
+    
+- **ChassisAlignTuner** (`tests/ChassisAlignTuner.java`)
+    - Heading PID tuner for chassis rotation
+    - Uses Pinpoint odometry for heading measurement
+    - Auto-locks turret during test (`turretMotor.setBrake()`)
+    - Dashboard control + D-Pad ±15° adjustment
+
+### Tuned Parameters (TurretConstants.java)
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| `kP` | 0.0004 | Position control |
+| `kI` | 0.0 | Not used |
+| `kD` | 0.0000185 | Damping |
+| `kF` | 0.058 | Static friction (direction-aware) |
+| `tolerance` | 100 ticks | ~0.83° |
+| `reverseMotor` | true | Motor direction REVERSED |
+
+### Changed
+- **Turret.java**: Updated PID logic to match TurretMotorTuner
+    - Motor direction set via `TurretConstants.reverseMotor`
+    - kF now direction-aware: `feedforward = (error > 0) ? kF : -kF`
+    - Removed `minOutputPower` friction compensation (kF handles this now)
+    - Applies to both SOFT_LOCK and HARD_LOCK modes
+
+### Direction-Aware kF Logic
+```java
+// Disable built-in F in PIDF controller
+positionPIDF.setPIDF(kP, kI, kD, 0);
+double pidPower = positionPIDF.calculate(current, target);
+
+// Add F manually with correct direction
+double feedforward = (error > 0) ? kF : -kF;
+output = pidPower + feedforward;
+```
+
+---
+
 ## [2026-02-01] - DashTuner Encoder Safety Protection
 
 ### Added
