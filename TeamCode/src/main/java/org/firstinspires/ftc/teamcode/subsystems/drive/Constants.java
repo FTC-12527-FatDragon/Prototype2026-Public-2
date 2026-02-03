@@ -49,16 +49,6 @@ public class Constants {
             .xVelocity(DriveConstants.forwardVelocity)
             .yVelocity(DriveConstants.strafeVelocity);
 
-    // OTOS Constants (Commented out as we are using Pinpoint)
-//    public static OTOSConstants otosConstants = new OTOSConstants()
-//            .hardwareMapName("otos")
-//            .linearUnit(DistanceUnit.INCH)
-//            .angleUnit(AngleUnit.RADIANS)
-//            .offset(new SparkFunOTOS.Pose2D(DriveConstants.xPoseOTOS,
-//                    DriveConstants.yPoseOTOS, DriveConstants.headingPoseOTOS))
-//            .linearScalar(DriveConstants.linearScalar)
-//            .angularScalar(DriveConstants.angularScalar);
-
     // Pinpoint Localizer Constants
     public static PinpointConstants localizerConstants = new PinpointConstants()
             .forwardPodY(DriveConstants.yPoseDW)
@@ -66,7 +56,7 @@ public class Constants {
             .distanceUnit(DistanceUnit.INCH)
             .hardwareMapName("od")
             .encoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD)
-            .forwardEncoderDirection(GoBildaPinpointDriver.EncoderDirection.FORWARD)
+            .forwardEncoderDirection(GoBildaPinpointDriver.EncoderDirection.REVERSED)
             .strafeEncoderDirection(GoBildaPinpointDriver.EncoderDirection.REVERSED);
     
     /**
@@ -94,7 +84,6 @@ public class Constants {
     public static Follower createFollower(HardwareMap hardwareMap) {
         return new FollowerBuilder(followerConstants, hardwareMap)
                 .mecanumDrivetrain(driveConstants)
-                // .OTOSLocalizer(otosConstants)
                 .pinpointLocalizer(localizerConstants)
 //                .pathConstraints(pathConstraints)
                 .build();
