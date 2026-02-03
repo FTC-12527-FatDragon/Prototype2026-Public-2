@@ -125,17 +125,22 @@ public class Solo extends CommandOpMode {
         // ========== D-PAD TURRET OPEN-LOOP CONTROL ==========
         // D-Pad Left: Turn left (CCW) at 0.5 power
         // D-Pad Right: Turn right (CW) at 0.5 power
-        // Release: Stop (power = 0, BRAKE mode holds position)
+        // Release: Active position hold using PID (stronger than passive BRAKE)
         if (robot.turret != null) {
             boolean dpadLeft = gamepadEx1.getButton(GamepadKeys.Button.DPAD_LEFT);
             boolean dpadRight = gamepadEx1.getButton(GamepadKeys.Button.DPAD_RIGHT);
             
             if (dpadLeft) {
+                robot.turret.releaseHold();   // Allow manual control
                 robot.turret.setPower(0.5);   // Left (angle decreases)
             } else if (dpadRight) {
+                robot.turret.releaseHold();   // Allow manual control
                 robot.turret.setPower(-0.5);  // Right (angle increases)
             } else {
-                robot.turret.setPower(0);     // Stop, BRAKE holds position
+                // No D-pad input: actively hold current position with PID
+                if (!robot.turret.isHoldingPosition()) {
+                    robot.turret.holdCurrentPosition();  // Lock to current angle
+                }
             }
         }
         

@@ -25,9 +25,6 @@ public class DriveConstants {
     // yPoseDW corresponds to the Forward Pod's Y offset.
     // Values are converted from mm (measured) to inches.
     public static double xPoseDW = -93.45 / 25.4, yPoseDW = 24.05 / 25.4, headingDW = Math.PI;
-    
-    // OTOS Offsets (Legacy/Alternative)
-    public static double xPoseOTOS = Units.mmToInches(-173), yPoseOTOS = 0, headingPoseOTOS = -Math.PI / 2;
 
     // Drive behavior constants
     public static double strafingBalance = 1.1; // Multiplier to correct strafing drift/inefficiency

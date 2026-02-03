@@ -44,6 +44,10 @@ public class Turret extends SubsystemBase {
     }
     private LockMode lockMode = LockMode.MANUAL;
     
+    // Position hold state (for MANUAL mode brake)
+    private boolean holdingPosition = false;
+    private double holdAngleDeg = 0;
+    
     // Position control state
     private double targetAngleDeg = 0;
     
@@ -181,6 +185,35 @@ public class Turret extends SubsystemBase {
             return;
         }
         this.targetPower = 0;
+    }
+    
+    /**
+     * Enables position hold mode - uses PID to actively hold current position.
+     * Call this when D-pad is released to maintain turret position.
+     * Much stronger than passive BRAKE mode.
+     */
+    public void holdCurrentPosition() {
+        if (isUnwinding) {
+            return;
+        }
+        holdAngleDeg = getAngleDegrees();
+        holdingPosition = true;
+    }
+    
+    /**
+     * Releases position hold and allows free movement.
+     * Call this when D-pad is pressed to allow manual control.
+     */
+    public void releaseHold() {
+        holdingPosition = false;
+    }
+    
+    /**
+     * Checks if turret is in position hold mode.
+     * @return true if actively holding position
+     */
+    public boolean isHoldingPosition() {
+        return holdingPosition;
     }
 
     /**
@@ -1047,8 +1080,21 @@ public class Turret extends SubsystemBase {
                 
             case MANUAL:
             default:
-                // Manual power mode
-                outputPower = targetPower;
+                // Manual power mode with optional position hold
+                if (holdingPosition) {
+                    // Use PID to actively hold position (stronger than passive BRAKE)
+                    double error = holdAngleDeg - currentAngle;
+                    positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
+                    double pidPower = positionPIDF.calculate(currentAngle, holdAngleDeg);
+                    double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                    outputPower = pidPower + feedforward;
+                    // Clamp to max output
+                    outputPower = Math.max(-TurretConstants.maxOutputPower, 
+                                           Math.min(TurretConstants.maxOutputPower, outputPower));
+                } else {
+                    // Direct power control
+                    outputPower = targetPower;
+                }
                 break;
         }
         
