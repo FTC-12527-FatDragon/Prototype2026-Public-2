@@ -55,9 +55,6 @@ public class TeleOpDriveCommand extends CommandBase {
 
     @Override
     public void execute() {
-        // ==================== AUTO-AIM DISABLED ====================
-        // Uncomment when Vision and Turret are ready
-        /*
         // ==================== ABSOLUTE POSITION UPDATE (with Turret Compensation) ====================
         // Limelight is on the turret, so we need to compensate for turret angle
         // to get the correct chassis center position
@@ -81,7 +78,7 @@ public class TeleOpDriveCommand extends CommandBase {
         // ==================== DRIVING WITH AUTO-AIM ====================
         if (!isAuto[0]) {
             // Get raw inputs
-            double rawLeftX = gamepadEx.getLeftX();
+            double rawLeftX = -gamepadEx.getLeftX();  // Negate X for correct strafing direction
             double rawLeftY = gamepadEx.getLeftY();
             double rawRightX = gamepadEx.getRightX();
             
@@ -92,19 +89,10 @@ public class TeleOpDriveCommand extends CommandBase {
             // Shoot buttons do NOT trigger chassis auto-aim
             boolean shouldAlign = aPressed;
             
-            // D-Pad rotation input (always available)
-            double dpadTurn = 0;
-            if (gamepadEx.getButton(GamepadKeys.Button.DPAD_LEFT)) {
-                dpadTurn = -DriveConstants.dpadTurnSpeed;
-            } else if (gamepadEx.getButton(GamepadKeys.Button.DPAD_RIGHT)) {
-                dpadTurn = DriveConstants.dpadTurnSpeed;
-            }
-            
             // Check for input
             boolean hasInput = Math.abs(rawLeftX) > DriveConstants.deadband || 
                                Math.abs(rawLeftY) > DriveConstants.deadband || 
                                Math.abs(rawRightX) > DriveConstants.deadband ||
-                               dpadTurn != 0 ||
                                shouldAlign;
             
             if (hasInput) {
@@ -112,7 +100,7 @@ public class TeleOpDriveCommand extends CommandBase {
                 
                 // Apply squared input curve
                 double forward = rawLeftY * Math.abs(rawLeftY);
-                double strafe = -rawLeftX * Math.abs(rawLeftX);
+                double strafe = rawLeftX * Math.abs(rawLeftX);
                 
                 // Determine turn input based on turret lock mode
                 double turn;
@@ -124,45 +112,15 @@ public class TeleOpDriveCommand extends CommandBase {
                     (turret == null || turret.getLockMode() == Turret.LockMode.SOFT_LOCK);
                 
                 if (useChassisAutoAim && vision != null) {
-                    // SOFT LOCK MODE: Chassis auto-aim
+                    // SOFT LOCK MODE: Chassis auto-aim using tx from Limelight
                     turn = drive.getAlignTurnPower(vision);
                 } else {
                     // HARD LOCK or MANUAL MODE: Manual turn control
                     turn = rawRightX * Math.abs(rawRightX);
-                    turn += dpadTurn;
                 }
                 
                 // Clamp turn to [-1, 1]
                 turn = Math.max(-1, Math.min(1, turn));
-                
-                // Drive Field Relative
-                drive.moveRobotFieldRelative(forward, strafe, turn);
-            }
-            else {
-                drive.setGamepad(false);
-            }
-        }
-        */
-        
-        // ==================== MANUAL DRIVING ONLY ====================
-        if (!isAuto[0]) {
-            // Get raw inputs (same as DriveOnlyTeleOp)
-            double rawLeftX = -gamepadEx.getLeftX();  // Negate X
-            double rawLeftY = gamepadEx.getLeftY();
-            double rawRightX = gamepadEx.getRightX();
-            
-            // Check for input
-            boolean hasInput = Math.abs(rawLeftX) > DriveConstants.deadband || 
-                               Math.abs(rawLeftY) > DriveConstants.deadband || 
-                               Math.abs(rawRightX) > DriveConstants.deadband;
-            
-            if (hasInput) {
-                drive.setGamepad(true);
-                
-                // Apply squared input curve (same as DriveOnlyTeleOp)
-                double forward = rawLeftY * Math.abs(rawLeftY);
-                double strafe = rawLeftX * Math.abs(rawLeftX);  // No negation here
-                double turn = rawRightX * Math.abs(rawRightX);
                 
                 // Drive Field Relative
                 drive.moveRobotFieldRelative(forward, strafe, turn);
@@ -174,3 +132,4 @@ public class TeleOpDriveCommand extends CommandBase {
 }
 
 // Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.
+

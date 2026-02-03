@@ -897,6 +897,16 @@ public class MecanumDrivePinpoint extends SubsystemBase {
      * Resets the auto-aim offset lock, heading target lock, filter, and PID.
      * Call this when releasing the aim button.
      */
+    /**
+     * Checks if the robot is currently aligned to the target.
+     * Uses hysteresis to prevent oscillation at the deadband boundary.
+     * 
+     * @return true if aligned (within deadband), false if still aligning
+     */
+    public boolean isAligned() {
+        return isAligned;
+    }
+    
     public void resetAutoAimOffset() {
         // Reset tx-based offset lock (Mode 1)
         offsetLocked = false;

@@ -150,6 +150,19 @@ public class Solo extends CommandOpMode {
         telemetry.addData("Odo Y", String.format("%.2f in", pose.getY(DistanceUnit.INCH)));
         telemetry.addData("Odo Heading", String.format("%.1f deg", Math.toDegrees(pose.getHeading(AngleUnit.RADIANS))));
         
+        // --- Vision / Auto-Aim Status ---
+        telemetry.addLine("=== VISION ===");
+        if (robot.vision != null) {
+            int tagId = robot.vision.getDetectedTagId();
+            telemetry.addData("Tag ID", tagId == -1 ? "NONE" : tagId);
+            telemetry.addData("TX", String.format("%.1f°", robot.vision.getTx()));
+            telemetry.addData("Distance", String.format("%.1f in", robot.vision.getDistanceToTag()));
+            telemetry.addData("Aligned", robot.drive.isAligned() ? "YES ✓" : "NO");
+        } else {
+            telemetry.addLine("Vision not available");
+        }
+        telemetry.addLine("A = Chassis Auto-Aim");
+        
         // --- Intake/Shooter Status ---
         boolean shooterAccelerationPressed =
                 gamepadEx1.getButton(GamepadKeys.Button.LEFT_BUMPER) ||
