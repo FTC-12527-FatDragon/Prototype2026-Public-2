@@ -36,10 +36,11 @@ public class SoloBlue extends CommandOpMode {
     private GamepadEx gamepadEx2;  // Secondary gamepad for emergency controls
     private boolean[] isAuto = {false};
     
-    // Edge detection for gamepad2 emergency disable combos
-    private boolean lastIntakeDisableCombo = false;   // LT + LB
-    private boolean lastShooterDisableCombo = false;  // RT + RB
-    private boolean lastTurretDisableCombo = false;   // LB + RB
+    // Edge detection for turret mode toggle (GP1 right stick button)
+    private boolean lastRightStickButton = false;
+    
+    // Edge detection for gamepad2 set home (GP2 right stick button)
+    private boolean lastGP2RightStickButton = false;
 
     @Override
     public void initialize() {
@@ -90,35 +91,26 @@ public class SoloBlue extends CommandOpMode {
     public void run() {
         CommandScheduler.getInstance().run();
         
-        // ========== GAMEPAD2 EMERGENCY DISABLE CONTROLS ==========
-        // Read current combo states
-        boolean intakeDisableCombo = gamepadEx2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > 0.3 
-                && gamepadEx2.getButton(GamepadKeys.Button.LEFT_BUMPER);
-        boolean shooterDisableCombo = gamepadEx2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > 0.3 
-                && gamepadEx2.getButton(GamepadKeys.Button.RIGHT_BUMPER);
-        boolean turretDisableCombo = gamepadEx2.getButton(GamepadKeys.Button.LEFT_BUMPER) 
-                && gamepadEx2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
-                && !intakeDisableCombo && !shooterDisableCombo;  // Avoid conflict with other combos
-        
-        // Edge detection: toggle on rising edge (just pressed)
-        if (intakeDisableCombo && !lastIntakeDisableCombo) {
-            robot.intake.toggleDisabled();
+        // ========== GAMEPAD2 RIGHT STICK: SET CURRENT AS HOME ==========
+        boolean gp2RightStickButton = gamepadEx2.getButton(GamepadKeys.Button.RIGHT_STICK_BUTTON);
+        if (gp2RightStickButton && !lastGP2RightStickButton && robot.turret != null) {
+            robot.turret.setCurrentAsHome();
         }
-        if (shooterDisableCombo && !lastShooterDisableCombo) {
-            robot.shooter.toggleDisabled();
-        }
-        if (turretDisableCombo && !lastTurretDisableCombo && robot.turret != null) {
-            robot.turret.toggleDisabled();
-        }
+        lastGP2RightStickButton = gp2RightStickButton;
         
-        // Update last combo states for next frame
-        lastIntakeDisableCombo = intakeDisableCombo;
-        lastShooterDisableCombo = shooterDisableCombo;
-        lastTurretDisableCombo = turretDisableCombo;
+        // ========== RIGHT STICK BUTTON: TOGGLE TURRET MODE ==========
+        // Press right stick to toggle between SOFT_LOCK and HARD_LOCK
+        boolean rightStickButton = gamepadEx1.getButton(GamepadKeys.Button.RIGHT_STICK_BUTTON);
+        if (rightStickButton && !lastRightStickButton && robot.turret != null) {
+            // Toggle turret mode
+            if (robot.turret.getLockMode() == Turret.LockMode.HARD_LOCK) {
+                robot.turret.enableSoftLock();  // Switch to SOFT_LOCK
+            } else {
+                robot.turret.enableHardLock();  // Switch to HARD_LOCK
+            }
+        }
+        lastRightStickButton = rightStickButton;
         
-        // --- Update Absolute Position & Turret ---
-        // TURRET/VISION DISABLED - Uncomment when ready
-        /*
         // ===== ABSOLUTE POSITION UPDATE (with Turret Compensation) =====
         if (robot.vision != null) {
             int currentTagId = robot.vision.getDetectedTagId();
@@ -157,7 +149,6 @@ public class SoloBlue extends CommandOpMode {
                 );
             }
         }
-        */
         
         // --- Telemetry ---
         Pose2D pose = robot.drive.getPose();
@@ -189,19 +180,12 @@ public class SoloBlue extends CommandOpMode {
         // --- Turret Status ---
         if (robot.turret != null) {
             telemetry.addLine("=== TURRET ===");
-            telemetry.addData("Alliance", robot.turret.getAlliance());
-            telemetry.addData("Lock Mode", robot.turret.getLockMode());
+            telemetry.addData("Mode", robot.turret.getLockMode());
+            telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
+            telemetry.addData("Tracking", robot.turret.getTrackingMode());
             telemetry.addData("Unwinding", robot.turret.isUnwinding() ? "YES" : "NO");
+            telemetry.addLine("GP1 RS = Toggle Mode | GP2 RS = Set Home");
         }
-        
-        // --- Emergency Disable Status (Gamepad2) ---
-        telemetry.addLine("=== EMERGENCY DISABLE (GP2) ===");
-        telemetry.addData("Intake", robot.intake.isDisabled() ? "DISABLED" : "OK");
-        telemetry.addData("Shooter", robot.shooter.isDisabled() ? "DISABLED" : "OK");
-        if (robot.turret != null) {
-            telemetry.addData("Turret", robot.turret.isDisabled() ? "DISABLED" : "OK");
-        }
-        telemetry.addLine("GP2: LT+LB=Intake | RT+RB=Shooter | LB+RB=Turret");
         
         telemetry.update();
 

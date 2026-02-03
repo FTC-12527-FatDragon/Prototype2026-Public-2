@@ -153,12 +153,12 @@ public class Shooter extends SubsystemBase {
 
     /**
      * Gets the current velocity of the right shooter motor.
-     * @return Velocity in ticks per second.
+     * @return Velocity in ticks per second (negative value).
      */
     public double getVelocity() {
-        // leftShooter runs positive, but target velocities are negative
-        // Return negative to match the convention
-        return -leftShooter.getVelocity();
+        // rightShooter runs negative (setPower(-power)), so velocity is already negative
+        // This matches the target velocity convention (negative values)
+        return rightShooter.getVelocity();
     }
 
     /**
@@ -184,9 +184,9 @@ public class Shooter extends SubsystemBase {
         }
         
         // Check if current velocity is close to target velocity
-        // leftShooter runs positive, but targetVel is negative, so negate for comparison
+        // rightShooter velocity is already negative, matching targetVel convention
         return Util.epsilonEqual(
-                -leftShooter.getVelocity(),
+                rightShooter.getVelocity(),
                 targetVel,
                 ShooterConstants.shooterEpsilon
         );
@@ -210,8 +210,8 @@ public class Shooter extends SubsystemBase {
         }
         
         // Control loop runs always (even in STOP state) to maintain idle speed if set
-        // leftShooter runs positive, but target velocities are negative, so negate
-        double currentVel = -leftShooter.getVelocity();
+        // rightShooter velocity is already negative, matching target velocity convention
+        double currentVel = rightShooter.getVelocity();
         
         // Use adaptive velocity if set, otherwise use state velocity
         double targetVel = (adaptiveVelocity != 0) ? adaptiveVelocity : shooterState.shooterVelocity;

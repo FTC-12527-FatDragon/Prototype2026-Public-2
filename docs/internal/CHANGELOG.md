@@ -4,6 +4,39 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-03] - Bug Fixes & Code Cleanup
+
+### Fixed
+- **Auto Path Files** - Point → Pose Fix
+    - All 6 auto files were using non-existent `Point` class
+    - Changed to use `Pose` directly (matches Pedro Pathing library API)
+    - Files fixed: `BlueFarAuto`, `RedFarAuto`, `BlueNearAuto`, `RedNearAuto`, `BlueNearInfinite`, `RedNearInfinite`
+    - Removed `import com.pedropathing.geometry.Point;`
+    - Changed control point declarations: `Point` → `Pose`
+    - Simplified BezierLine/BezierCurve calls: `new BezierLine(POSE1, POSE2)`
+
+- **Shooter Velocity Reading** (`Shooter.java`)
+    - Changed from left motor to right motor for velocity sensing
+    - `getVelocity()`: `return -leftShooter.getVelocity()` → `return rightShooter.getVelocity()`
+    - `isShooterAtSetPoint()`: Updated to use `rightShooter.getVelocity()`
+    - `periodic()`: `currentVel` now reads from `rightShooter`
+    - Right motor runs negative power, so velocity is already negative (no need to negate)
+
+### Removed
+- **Emergency Disable Controls** (`SoloBlue.java`, `SoloRed.java`)
+    - Removed LT+LB (Intake disable), RT+RB (Shooter disable), LB+RB (Turret disable)
+    - Removed related variables: `lastIntakeDisableCombo`, `lastShooterDisableCombo`, `lastTurretDisableCombo`
+    - Removed telemetry section "EMERGENCY DISABLE (GP2)"
+    - Gamepad2 now only has: **Right Stick Button = Set Home**
+
+### Current Gamepad2 Functions (SoloBlue/SoloRed)
+| Button | Function |
+|--------|----------|
+| **Right Stick Button** | Set current turret position as home |
+| All other buttons | Unused |
+
+---
+
 ## [2026-02-03] - Parallel Turret Movement Optimization
 
 ### Added

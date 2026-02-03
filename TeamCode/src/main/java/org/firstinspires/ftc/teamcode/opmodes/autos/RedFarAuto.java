@@ -7,7 +7,6 @@ import com.arcrobotics.ftclib.command.SequentialCommandGroup;
 import com.arcrobotics.ftclib.command.WaitCommand;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Point;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
@@ -33,7 +32,7 @@ public class RedFarAuto extends AutoCommandBase {
     // Key positions (Red side - mirrored at x=72)
     private static final Pose START_POSE = new Pose(89.03, 9.10, Math.toRadians(90));
     private static final Pose CURVE_END = new Pose(120.25, 7.30, Math.toRadians(0));
-    private static final Point CURVE_CONTROL = new Point(104.14, 14.95);
+    private static final Pose CURVE_CONTROL = new Pose(104.14, 14.95);
     private static final Pose INTAKE_POSE = new Pose(134.40, 8.13, Math.toRadians(0));
     private static final Pose SHOOT_POSE = new Pose(89.03, 9.10, Math.toRadians(0));
     
@@ -67,19 +66,13 @@ public class RedFarAuto extends AutoCommandBase {
     private Command oneCycleCommand() {
         PathChain toIntake = follower
                 .pathBuilder()
-                .addPath(new BezierLine(
-                        new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY()),
-                        new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY())
-                ))
+                .addPath(new BezierLine(SHOOT_POSE, INTAKE_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         PathChain toShoot = follower
                 .pathBuilder()
-                .addPath(new BezierLine(
-                        new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY()),
-                        new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                ))
+                .addPath(new BezierLine(INTAKE_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
@@ -96,29 +89,19 @@ public class RedFarAuto extends AutoCommandBase {
     public Command runAutoCommand() {
         path1 = follower
                 .pathBuilder()
-                .addPath(new BezierCurve(
-                        new Point(START_POSE.getX(), START_POSE.getY()),
-                        CURVE_CONTROL,
-                        new Point(CURVE_END.getX(), CURVE_END.getY())
-                ))
+                .addPath(new BezierCurve(START_POSE, CURVE_CONTROL, CURVE_END))
                 .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(0))
                 .build();
         
         path2 = follower
                 .pathBuilder()
-                .addPath(new BezierLine(
-                        new Point(CURVE_END.getX(), CURVE_END.getY()),
-                        new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY())
-                ))
+                .addPath(new BezierLine(CURVE_END, INTAKE_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         path3 = follower
                 .pathBuilder()
-                .addPath(new BezierLine(
-                        new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY()),
-                        new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                ))
+                .addPath(new BezierLine(INTAKE_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         

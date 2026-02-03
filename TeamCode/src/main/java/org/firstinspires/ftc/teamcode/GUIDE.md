@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-03 (Parallel Turret Optimization)
+> FTC Team 12527 | Last Updated: 2026-02-03 (Bug Fixes & Cleanup)
 
 ---
 
@@ -972,19 +972,14 @@ Heading PIDF tuner for chassis rotation. Uses Pinpoint odometry. Direction-aware
 | **D-Pad Right** (hold) | Turret CW (power -0.5) | ✅ | 云台顺时针转（开环） | ✅ |
 | **D-Pad Down** | ~~Manual brake~~ | ❌ Removed | ~~手动刹车~~ | ❌ 已删除 |
 
-### Secondary Controller (Gamepad2) - Emergency Disable | 副手柄 - 紧急禁用
+### Secondary Controller (Gamepad2) | 副手柄
 
-| Combo | Function | 功能 |
-|-------|----------|------|
-| **LT + LB** | Toggle Intake disable | 切换 Intake 禁用 |
-| **RT + RB** | Toggle Shooter disable | 切换 Shooter 禁用 |
-| **LB + RB** | Toggle Turret disable | 切换云台禁用 |
+| Button | Function | 功能 |
+|--------|----------|------|
+| **Right Stick Button** | Set current turret position as home | 设置当前云台位置为原点 |
 
-> **Usage | 使用方法**: Press combo once to disable subsystem (motor power → 0). Press again to re-enable.
-> 按一次组合键禁用子系统（电机功率→0），再按一次恢复。
-
-> **Telemetry | 遥测显示**: Check `=== EMERGENCY DISABLE (GP2) ===` section for status (OK / DISABLED).
-> 查看 telemetry 中的紧急禁用状态区域确认各子系统状态。
+> **Note | 注意**: Emergency disable combos have been removed. Gamepad2 is now only used for turret home calibration.
+> 紧急禁用组合键已被删除。Gamepad2 现在仅用于云台原点校准。
 
 #### A Button Behavior | A 键行为
 
@@ -1086,9 +1081,12 @@ Heading PIDF tuner for chassis rotation. Uses Pinpoint odometry. Direction-aware
 | Method | Description | 描述 |
 |--------|-------------|------|
 | `setShooterState(state)` | Set STOP/SLOW/MID/FAST state | 设置状态 |
-| `getVelocity()` | Get current velocity (TPS) | 获取当前转速 |
+| `getVelocity()` | Get current velocity from **right motor** (TPS) | 从**右电机**获取当前转速 |
 | `getTargetVelocity()` | Get target velocity | 获取目标转速 |
 | `isShooterAtSetPoint()` | Check if at target velocity | 检查是否达到目标转速 |
+
+> **Note**: Velocity is read from right motor (`rightShooter.getVelocity()`). Right motor runs negative power, so velocity is already negative.
+> **注意**: 转速从右电机读取。右电机功率为负，所以速度已经是负值。
 | **Adaptive Velocity | 自适应转速** | |
 | `setAdaptiveVelocity(velocity)` | Set adaptive velocity | 设置自适应转速 |
 | `getAdaptiveVelocity()` | Get adaptive velocity | 获取自适应转速 |

@@ -7,7 +7,6 @@ import com.arcrobotics.ftclib.command.SequentialCommandGroup;
 import com.arcrobotics.ftclib.command.WaitCommand;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Point;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
@@ -34,7 +33,7 @@ public class BlueFarAuto extends AutoCommandBase {
     // Key positions (Blue side - left side of field)
     private static final Pose START_POSE = new Pose(54.97, 9.10, Math.toRadians(90));
     private static final Pose CURVE_END = new Pose(23.75, 7.30, Math.toRadians(180));
-    private static final Point CURVE_CONTROL = new Point(39.86, 14.95);
+    private static final Pose CURVE_CONTROL = new Pose(39.86, 14.95);
     private static final Pose INTAKE_POSE = new Pose(9.60, 8.13, Math.toRadians(180));
     private static final Pose SHOOT_POSE = new Pose(54.97, 9.10, Math.toRadians(180));
     
@@ -87,23 +86,13 @@ public class BlueFarAuto extends AutoCommandBase {
         // Need to rebuild paths each time since PathChain can only be used once
         PathChain toIntake = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY()),
-                                new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(SHOOT_POSE, INTAKE_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(180))
                 .build();
         
         PathChain toShoot = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY()),
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(INTAKE_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(180))
                 .build();
         
@@ -126,37 +115,21 @@ public class BlueFarAuto extends AutoCommandBase {
         // Path 1: Start → Curve approach (heading 90° → 180°)
         path1 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierCurve(
-                                new Point(START_POSE.getX(), START_POSE.getY()),
-                                CURVE_CONTROL,
-                                new Point(CURVE_END.getX(), CURVE_END.getY())
-                        )
-                )
+                .addPath(new BezierCurve(START_POSE, CURVE_CONTROL, CURVE_END))
                 .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(180))
                 .build();
         
         // Path 2: Curve end → Intake position (heading 180° → 180°)
         path2 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(CURVE_END.getX(), CURVE_END.getY()),
-                                new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(CURVE_END, INTAKE_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(180))
                 .build();
         
         // Path 3: Intake → Shoot position (heading 180° → 180°)
         path3 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(INTAKE_POSE.getX(), INTAKE_POSE.getY()),
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(INTAKE_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(180))
                 .build();
         
