@@ -3,204 +3,145 @@ package org.firstinspires.ftc.teamcode.tests;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
-import com.arcrobotics.ftclib.controller.PIDFController;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 
-import org.firstinspires.ftc.teamcode.subsystems.drive.DriveConstants;
+import org.firstinspires.ftc.teamcode.subsystems.drive.MecanumDrivePinpoint;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 
 /**
- * Chassis Align Tuner - For tuning heading PIDF (rotation control)
+ * Chassis Heading PIDF Tuner
  * 
- * Uses GoBilda Pinpoint for heading measurement.
- * F term is applied manually based on error direction for static friction compensation.
+ * Robot tries to maintain starting heading (0°).
+ * Manually turn the robot to test PIDF resistance.
  * 
  * Dashboard Controls:
- * - targetHeading: Target angle in degrees (0 = forward)
- * - enabled: Enable PIDF control
+ * - enabled: Start/stop PIDF
  * - kP, kI, kD, kF: PIDF coefficients
- * 
- * Gamepad:
- * - A: Reset heading to 0
- * - D-Pad Left/Right: Adjust target ±15°
  */
-@TeleOp(name = "Chassis Align Tuner", group = "test")
+@TeleOp(name = "Chassis Heading Tuner", group = "test")
 @Config
 public class ChassisAlignTuner extends LinearOpMode {
     
-    // ==================== PIDF PARAMETERS ====================
-    public static double kP = 0.02;
+    // ==================== PID PARAMETERS (Tuned 2026-02-03) ====================
+    public static double kP = 0.03;
     public static double kI = 0.0;
-    public static double kD = 0.005;
-    public static double kF = 0.05;  // Static friction compensation (applied based on error direction)
+    public static double kD = 0.003;
+    public static double kF = 0.0;
     
     // ==================== CONTROL ====================
-    public static double targetHeading = 0;   // Target heading in degrees
-    public static boolean enabled = false;    // Enable rotation control
-    public static double tolerance = 2.0;     // Degrees - stop when within this range
-    public static double maxPower = 0.5;      // Max rotation power
+    public static boolean enabled = true;  // Default ON
+    public static double tolerance = 2.0;
+    public static double maxPower = 1.0;
+    public static double iMax = 50.0;
+    public static double iZone = 30.0;
     
     // Hardware
-    private DcMotor leftFront, leftBack, rightFront, rightBack;
-    private DcMotor turretMotor;  // Keep turret locked during test
-    private com.qualcomm.hardware.gobilda.GoBildaPinpointDriver pinpoint;
-    private PIDFController pidfController;
+    private MecanumDrivePinpoint drive;
     private FtcDashboard dashboard;
     
-    private double headingOffset = 0;  // For resetting heading
+    // PIDF State
+    private double headingOffset = 0;
+    private double prevError = 0;
+    private double totalError = 0;
+    private long lastTimeNanos = 0;
     
     @Override
     public void runOpMode() {
-        // Initialize motors
-        leftFront = hardwareMap.get(DcMotor.class, "leftFrontMotor");
-        leftBack = hardwareMap.get(DcMotor.class, "leftBackMotor");
-        rightFront = hardwareMap.get(DcMotor.class, "rightFrontMotor");
-        rightBack = hardwareMap.get(DcMotor.class, "rightBackMotor");
+        drive = new MecanumDrivePinpoint(hardwareMap);
         
-        // Set motor directions (typical mecanum setup)
-        leftFront.setDirection(DcMotorSimple.Direction.REVERSE);
-        leftBack.setDirection(DcMotorSimple.Direction.REVERSE);
-        rightFront.setDirection(DcMotorSimple.Direction.FORWARD);
-        rightBack.setDirection(DcMotorSimple.Direction.FORWARD);
+        // Lock turret
+        try {
+            DcMotor turret = hardwareMap.get(DcMotor.class, "turretMotor");
+            turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            turret.setPower(0);
+        } catch (Exception ignored) {}
         
-        leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        
-        // Initialize turret motor - keep it locked during chassis tuning
-        turretMotor = hardwareMap.get(DcMotor.class, "turretMotor");
-        turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        turretMotor.setPower(0);  // Brake mode, no power
-        
-        // Initialize Pinpoint
-        pinpoint = hardwareMap.get(com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.class, "od");
-        pinpoint.setOffsets(DriveConstants.xPoseDW, DriveConstants.yPoseDW, 
-                           org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit.INCH);
-        pinpoint.setEncoderResolution(
-            com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
-        pinpoint.setEncoderDirections(
-            com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.EncoderDirection.REVERSED,
-            com.qualcomm.hardware.gobilda.GoBildaPinpointDriver.EncoderDirection.REVERSED);
-        pinpoint.resetPosAndIMU();
-        
-        // Initialize PIDF (F is applied manually based on error direction)
-        pidfController = new PIDFController(kP, kI, kD, 0);
         dashboard = FtcDashboard.getInstance();
         
-        telemetry.addLine("=== CHASSIS ALIGN TUNER ===");
-        telemetry.addLine("Control via Dashboard!");
-        telemetry.addLine("Set 'enabled = true' to start");
-        telemetry.addLine("[A] Reset heading");
-        telemetry.addLine("[D-Pad L/R] ±15°");
+        telemetry.addLine("=== CHASSIS HEADING TUNER ===");
+        telemetry.addLine("");
+        telemetry.addLine("Robot will hold starting heading.");
+        telemetry.addLine("Turn robot by hand to test PIDF.");
+        telemetry.addLine("");
+        telemetry.addLine("Tune kP/kI/kD/kF on Dashboard");
         telemetry.update();
         
         waitForStart();
         
-        // Record initial heading
-        pinpoint.update();
-        headingOffset = pinpoint.getPosition().getHeading(AngleUnit.DEGREES);
-        
-        boolean lastDpadLeft = false;
-        boolean lastDpadRight = false;
+        // Lock to current heading
+        headingOffset = drive.getPose().getHeading(AngleUnit.DEGREES);
         
         while (opModeIsActive()) {
-            // Update Pinpoint
-            pinpoint.update();
-            
-            // Update PIDF from Dashboard (F is applied manually)
-            pidfController.setPIDF(kP, kI, kD, 0);
-            
-            // Get current heading (relative to start)
-            double rawHeading = pinpoint.getPosition().getHeading(AngleUnit.DEGREES);
+            // Current heading relative to start (target is always 0)
+            double rawHeading = drive.getPose().getHeading(AngleUnit.DEGREES);
             double currentHeading = normalizeAngle(rawHeading - headingOffset);
+            double error = currentHeading;  // Positive error = rotated right = need to turn left (negative power)
             
-            // Calculate error (shortest path)
-            double error = normalizeAngle(targetHeading - currentHeading);
+            // Calculate dt
+            long now = System.nanoTime();
+            double dt = (lastTimeNanos == 0) ? 0.02 : (now - lastTimeNanos) / 1.0E9;
+            lastTimeNanos = now;
             
-            // A button: Reset heading
-            if (gamepad1.a) {
-                headingOffset = rawHeading;
-                targetHeading = 0;
-                pidfController.reset();
-            }
-            
-            // D-Pad: Adjust target
-            if (gamepad1.dpad_left && !lastDpadLeft) {
-                targetHeading = normalizeAngle(targetHeading - 15);
-            }
-            lastDpadLeft = gamepad1.dpad_left;
-            
-            if (gamepad1.dpad_right && !lastDpadRight) {
-                targetHeading = normalizeAngle(targetHeading + 15);
-            }
-            lastDpadRight = gamepad1.dpad_right;
-            
-            // PIDF Control
+            // PIDF
             double turnPower = 0;
             boolean onTarget = Math.abs(error) <= tolerance;
             
             if (enabled && !onTarget) {
-                // PID calculation - use (current, target) like turret does
-                double pidPower = pidfController.calculate(currentHeading, targetHeading);
+                double dError = (dt > 0) ? (error - prevError) / dt : 0;
                 
-                // Add F manually with direction awareness (static friction compensation)
-                double feedforward = (error > 0) ? kF : -kF;
-                turnPower = pidPower + feedforward;
+                if (Math.abs(error) > iZone) {
+                    totalError = 0;
+                } else if (kI != 0) {
+                    totalError += error * dt;
+                    double limit = iMax / kI;
+                    totalError = Math.max(-limit, Math.min(limit, totalError));
+                }
                 
-                // Clamp to max power
-                turnPower = Math.max(-maxPower, Math.min(maxPower, turnPower));
+                double pTerm = kP * error;
+                double iTerm = kI * totalError;
+                double dTerm = kD * dError;
+                double base = pTerm + iTerm + dTerm;
+                double fTerm = (Math.abs(base) > 1e-6) ? Math.signum(base) * kF : 0;
+                
+                turnPower = Math.max(-maxPower, Math.min(maxPower, base + fTerm));
+            } else if (onTarget) {
+                totalError = 0;
             }
             
-            // Apply to motors (turn only, no translation)
-            leftFront.setPower(turnPower);
-            leftBack.setPower(turnPower);
-            rightFront.setPower(-turnPower);
-            rightBack.setPower(-turnPower);
+            prevError = error;
             
-            // Dashboard telemetry
-            TelemetryPacket packet = new TelemetryPacket();
-            packet.put("ENABLED", enabled);
-            packet.put("ON_TARGET", onTarget);
-            packet.put("targetHeading", targetHeading);
-            packet.put("currentHeading", currentHeading);
-            packet.put("error", error);
-            packet.put("turnPower", turnPower);
-            packet.put("tolerance", tolerance);
-            dashboard.sendTelemetryPacket(packet);
+            // Apply
+            drive.moveRobotFieldRelative(0, 0, turnPower);
             
-            // Driver Station telemetry
+            // Dashboard
+            TelemetryPacket p = new TelemetryPacket();
+            p.put("enabled", enabled);
+            p.put("onTarget", onTarget);
+            p.put("currentHeading", currentHeading);
+            p.put("error", error);
+            p.put("turnPower", turnPower);
+            dashboard.sendTelemetryPacket(p);
+            
+            // Telemetry
             telemetry.addData("ENABLED", enabled ? "YES ✅" : "NO ❌");
             telemetry.addData("ON TARGET", onTarget ? "YES ✅" : "NO");
             telemetry.addLine("---");
-            telemetry.addData("Target", "%.1f°", targetHeading);
             telemetry.addData("Current", "%.1f°", currentHeading);
-            telemetry.addData("Error", "%.1f° (tol: %.1f°)", error, tolerance);
-            telemetry.addLine("---");
+            telemetry.addData("Error", "%.1f°", error);
             telemetry.addData("Turn Power", "%.4f", turnPower);
             telemetry.addLine("---");
-            telemetry.addData("kP", kP);
-            telemetry.addData("kI", kI);
-            telemetry.addData("kD", kD);
-            telemetry.addData("kF", kF);
+            telemetry.addData("kP", "%.5f", kP);
+            telemetry.addData("kI", "%.5f", kI);
+            telemetry.addData("kD", "%.5f", kD);
+            telemetry.addData("kF", "%.3f", kF);
             telemetry.update();
         }
         
-        // Stop motors
-        leftFront.setPower(0);
-        leftBack.setPower(0);
-        rightFront.setPower(0);
-        rightBack.setPower(0);
+        drive.stop();
     }
     
-    /**
-     * Normalize angle to [-180, 180]
-     */
     private double normalizeAngle(double angle) {
         while (angle > 180) angle -= 360;
         while (angle < -180) angle += 360;

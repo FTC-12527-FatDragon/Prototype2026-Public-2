@@ -152,15 +152,18 @@ public class Turret extends SubsystemBase {
         }
         
         // Apply software limits if calibrated
+        // NOTE: Motor is REVERSED, so positive power = decrease angle, negative power = increase angle
         if (isCalibrated) {
             double currentAngle = getAngleDegrees();
             
             // Prevent moving past limits
-            if (currentAngle <= TurretConstants.minAngleDeg && power < 0) {
-                power = 0;  // Don't go further left
+            // Positive power → angle decreases → limit at minAngleDeg
+            if (currentAngle <= TurretConstants.minAngleDeg && power > 0) {
+                power = 0;  // Don't go further left (past min)
             }
-            if (currentAngle >= TurretConstants.maxAngleDeg && power > 0) {
-                power = 0;  // Don't go further right
+            // Negative power → angle increases → limit at maxAngleDeg
+            if (currentAngle >= TurretConstants.maxAngleDeg && power < 0) {
+                power = 0;  // Don't go further right (past max)
             }
         }
         
@@ -1050,11 +1053,14 @@ public class Turret extends SubsystemBase {
         }
         
         // Apply software limits
+        // NOTE: Motor is REVERSED, so positive power = decrease angle, negative power = increase angle
         if (isCalibrated) {
-            if (currentAngle <= TurretConstants.minAngleDeg && outputPower < 0) {
+            // Positive power → angle decreases → limit at minAngleDeg
+            if (currentAngle <= TurretConstants.minAngleDeg && outputPower > 0) {
                 outputPower = 0;
             }
-            if (currentAngle >= TurretConstants.maxAngleDeg && outputPower > 0) {
+            // Negative power → angle increases → limit at maxAngleDeg
+            if (currentAngle >= TurretConstants.maxAngleDeg && outputPower < 0) {
                 outputPower = 0;
             }
         }

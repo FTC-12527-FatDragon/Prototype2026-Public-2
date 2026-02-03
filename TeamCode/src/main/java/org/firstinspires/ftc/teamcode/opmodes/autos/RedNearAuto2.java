@@ -7,8 +7,7 @@ import com.arcrobotics.ftclib.command.SequentialCommandGroup;
 import com.arcrobotics.ftclib.command.WaitCommand;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Point;
-import com.pedropathing.geometry.Pose;
+import com.pedropathing.geometry    .Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
@@ -36,21 +35,21 @@ public class RedNearAuto2 extends AutoCommandBase {
     
     // New path positions (mirrored)
     private static final Pose SAMPLE1_POSE = new Pose(135.21, 59.30, Math.toRadians(0));     // 144 - 8.79
-    private static final Point SAMPLE1_CTRL = new Point(76.38, 56.74);                        // 144 - 67.62
+    private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);                          // 144 - 67.62
     
     private static final Pose INTAKE1_POSE = new Pose(127.55, 69.66, Math.toRadians(0));     // 144 - 16.45
-    private static final Point INTAKE1_CTRL = new Point(117.11, 61.55);                       // 144 - 26.89
+    private static final Pose INTAKE1_CTRL = new Pose(117.11, 61.55);                         // 144 - 26.89
     
     private static final Pose INTAKE2_POSE = new Pose(127.83, 83.46, Math.toRadians(0));     // 144 - 16.17
-    private static final Point INTAKE2_CTRL = new Point(97.26, 81.85);                        // 144 - 46.74
+    private static final Pose INTAKE2_CTRL = new Pose(97.26, 81.85);                          // 144 - 46.74
     
     private static final Pose NEW_POS = new Pose(127.23, 68.97, Math.toRadians(0));          // 144 - 16.77
-    private static final Point NEW_POS_CTRL = new Point(111.15, 70.64);                       // 144 - 32.85
+    private static final Pose NEW_POS_CTRL = new Pose(111.15, 70.64);                         // 144 - 32.85
     
     // RedNear continuation positions (mirrored)
     private static final Pose RN_SAMPLE2_POSE = new Pose(129.81, 35.31, Math.toRadians(0));  // 144 - 14.19
-    private static final Point RN_SAMPLE2_CTRL1 = new Point(80.38, 43.59);                    // 144 - 63.62
-    private static final Point RN_SAMPLE2_CTRL2 = new Point(73.67, 33.14);                    // 144 - 70.33
+    private static final Pose RN_SAMPLE2_CTRL1 = new Pose(80.38, 43.59);                      // 144 - 63.62
+    private static final Pose RN_SAMPLE2_CTRL2 = new Pose(73.67, 33.14);                      // 144 - 70.33
     
     private static final Pose RN_FINAL_POSE = new Pose(128.04, 101.11, Math.toRadians(0));   // 144 - 15.96
     
@@ -90,76 +89,42 @@ public class RedNearAuto2 extends AutoCommandBase {
         // Path 1: Start → Shoot (heading 90° → 0°)
         path1 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(START_POSE.getX(), START_POSE.getY()),
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(START_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(0))
                 .build();
         
         // Path 2: Shoot → Sample 1 (curve)
         path2 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierCurve(
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY()),
-                                SAMPLE1_CTRL,
-                                new Point(SAMPLE1_POSE.getX(), SAMPLE1_POSE.getY())
-                        )
-                )
+                .addPath(new BezierCurve(SHOOT_POSE, SAMPLE1_CTRL, SAMPLE1_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // Path 3: Sample 1 → Intake 1 (curve)
         path3 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierCurve(
-                                new Point(SAMPLE1_POSE.getX(), SAMPLE1_POSE.getY()),
-                                INTAKE1_CTRL,
-                                new Point(INTAKE1_POSE.getX(), INTAKE1_POSE.getY())
-                        )
-                )
+                .addPath(new BezierCurve(SAMPLE1_POSE, INTAKE1_CTRL, INTAKE1_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // Path 4: Intake 1 → Shoot (straight)
         path4 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(INTAKE1_POSE.getX(), INTAKE1_POSE.getY()),
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(INTAKE1_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // Path 5: Shoot → Intake 2 (curve)
         path5 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierCurve(
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY()),
-                                INTAKE2_CTRL,
-                                new Point(INTAKE2_POSE.getX(), INTAKE2_POSE.getY())
-                        )
-                )
+                .addPath(new BezierCurve(SHOOT_POSE, INTAKE2_CTRL, INTAKE2_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // Path 6: Intake 2 → New Position (curve)
         path6 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierCurve(
-                                new Point(INTAKE2_POSE.getX(), INTAKE2_POSE.getY()),
-                                NEW_POS_CTRL,
-                                new Point(NEW_POS.getX(), NEW_POS.getY())
-                        )
-                )
+                .addPath(new BezierCurve(INTAKE2_POSE, NEW_POS_CTRL, NEW_POS))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
@@ -168,50 +133,28 @@ public class RedNearAuto2 extends AutoCommandBase {
         // RN Path 6: New Position → Shoot (straight)
         pathRN6 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(NEW_POS.getX(), NEW_POS.getY()),
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(NEW_POS, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // RN Path 7: Shoot → Sample 2 (double control curve)
         pathRN7 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierCurve(
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY()),
-                                RN_SAMPLE2_CTRL1,
-                                RN_SAMPLE2_CTRL2,
-                                new Point(RN_SAMPLE2_POSE.getX(), RN_SAMPLE2_POSE.getY())
-                        )
-                )
+                .addPath(new BezierCurve(SHOOT_POSE, RN_SAMPLE2_CTRL1, RN_SAMPLE2_CTRL2, RN_SAMPLE2_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // RN Path 8: Sample 2 → Shoot (straight)
         pathRN8 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(RN_SAMPLE2_POSE.getX(), RN_SAMPLE2_POSE.getY()),
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(RN_SAMPLE2_POSE, SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
         // RN Path 9: Shoot → Final (straight)
         pathRN9 = follower
                 .pathBuilder()
-                .addPath(
-                        new BezierLine(
-                                new Point(SHOOT_POSE.getX(), SHOOT_POSE.getY()),
-                                new Point(RN_FINAL_POSE.getX(), RN_FINAL_POSE.getY())
-                        )
-                )
+                .addPath(new BezierLine(SHOOT_POSE, RN_FINAL_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         

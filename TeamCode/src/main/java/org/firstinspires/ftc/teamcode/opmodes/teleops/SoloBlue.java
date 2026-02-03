@@ -182,7 +182,7 @@ public class SoloBlue extends CommandOpMode {
             telemetry.addLine("=== TURRET ===");
             telemetry.addData("Mode", robot.turret.getLockMode());
             telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
-            telemetry.addData("Tracking", robot.turret.getTrackingMode());
+            telemetry.addData("Tracking", robot.turret.getTrackingModeString());
             telemetry.addData("Unwinding", robot.turret.isUnwinding() ? "YES" : "NO");
             telemetry.addLine("GP1 RS = Toggle Mode | GP2 RS = Set Home");
         }

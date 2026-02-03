@@ -7,7 +7,7 @@ import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
 
 /**
  * Command that waits for turret to reach target angle.
- * Finishes when turret.isAtTarget() returns true or timeout is reached.
+ * Finishes when turret.isOnTarget() returns true or timeout is reached.
  */
 public class WaitForTurretCommand extends CommandBase {
     private final Turret turret;
@@ -47,7 +47,7 @@ public class WaitForTurretCommand extends CommandBase {
     @Override
     public boolean isFinished() {
         // Finish if turret is at target OR timeout reached
-        return turret.isAtTarget() || timer.milliseconds() >= timeoutMs;
+        return turret.isOnTarget() || timer.milliseconds() >= timeoutMs;
     }
 }
 

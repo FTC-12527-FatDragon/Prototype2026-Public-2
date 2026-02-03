@@ -131,9 +131,9 @@ public class Solo extends CommandOpMode {
             boolean dpadRight = gamepadEx1.getButton(GamepadKeys.Button.DPAD_RIGHT);
             
             if (dpadLeft) {
-                robot.turret.setPower(0.5);   // Left (CCW)
+                robot.turret.setPower(0.5);   // Left (angle decreases)
             } else if (dpadRight) {
-                robot.turret.setPower(-0.5);  // Right (CW)
+                robot.turret.setPower(-0.5);  // Right (angle increases)
             } else {
                 robot.turret.setPower(0);     // Stop, BRAKE holds position
             }

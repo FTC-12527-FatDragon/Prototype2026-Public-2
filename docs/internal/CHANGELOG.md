@@ -4,29 +4,117 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-03] - ChassisAlignTuner PID Tuned
+
+### Fixed
+- **ChassisAlignTuner** - Fixed PID direction (was going wrong way)
+    - Changed `error = -currentHeading` → `error = currentHeading`
+    - Now robot correctly resists when pushed
+
+### Tuned (ChassisAlignTuner)
+- **kP** = 0.03 ✅
+- **kI** = 0.0
+- **kD** = 0.003 ✅
+- **kF** = 0.0 (not needed)
+- **maxPower** = 1.0
+- **tolerance** = 2.0°
+
+---
+
+## [2026-02-03] - Complete Documentation Update
+
+### Added (GUIDE.md)
+- **Robot Container** section - explains `Robot.java` and TeleOp vs Auto usage
+- **SoloEmergency** section - full documentation for emergency backup OpMode
+- **WaitForTurretCommand** section - auto command documentation
+- **RedNearAuto2** - added to available auto programs list
+- **AutoConstants** section - auto program coordinates reference
+- **TeleOpConstants** section - trigger thresholds reference
+- **Test Programs** - Added Tuning, PathTunerOpMode, ColorSensorTest descriptions
+- **DashboardUtil** section - Dashboard visualization utility
+- **FunctionalButton** section - custom button class for complex triggers
+- **Units** section - unit conversion utilities
+- **DriverControls** section - gamepad binding reference
+
+### Updated (GUIDE.md)
+- Table of Contents - added all new sections
+- Test OpModes table - added 3 more entries
+- Constants Files table - added AutoConstants, TeleOpConstants, TurretConstants
+
+---
+
+## [2026-02-03] - ChassisAlignTuner Rewrite
+
+### Changed
+- **ChassisAlignTuner** - Complete rewrite using MecanumDrivePinpoint
+    - Based on PedroPathing's HeadingTuner design
+    - Uses `MecanumDrivePinpoint` for motor control and Pinpoint for heading
+    - No Follower (avoids conflicts with TeleOp MecanumDrive)
+    - PIDF parameters converted from PedroPathing (radians → degrees):
+        - `kP = 0.014` (was 0.8 in radians)
+        - `kI = 0.0`
+        - `kD = 0.00035` (was 0.02 in radians)
+        - `kF = 0.03` (direction-aware static friction)
+    - Default `enabled = true` (starts immediately)
+    - Robot locks to starting heading, user turns robot by hand to test PIDF resistance
+    - Removed all gamepad controls (pure Dashboard tuning)
+    - Dashboard shows: currentHeading, error, turnPower, onTarget, PIDF values
+
+### Usage
+1. Run "Chassis Heading Tuner"
+2. Robot automatically tries to maintain starting heading
+3. Turn robot by hand → PIDF resists and returns to 0°
+4. Adjust kP/kD/kF on Dashboard until response is smooth
+
+---
+
 ## [2026-02-03] - Bug Fixes & Code Cleanup
 
 ### Fixed
 - **Auto Path Files** - Point → Pose Fix
-    - All 6 auto files were using non-existent `Point` class
+    - All 7 auto files were using non-existent `Point` class
     - Changed to use `Pose` directly (matches Pedro Pathing library API)
-    - Files fixed: `BlueFarAuto`, `RedFarAuto`, `BlueNearAuto`, `RedNearAuto`, `BlueNearInfinite`, `RedNearInfinite`
-    - Removed `import com.pedropathing.geometry.Point;`
-    - Changed control point declarations: `Point` → `Pose`
-    - Simplified BezierLine/BezierCurve calls: `new BezierLine(POSE1, POSE2)`
+    - Files fixed: `BlueFarAuto`, `RedFarAuto`, `BlueNearAuto`, `RedNearAuto`, `BlueNearInfinite`, `RedNearInfinite`, `RedNearAuto2`
 
 - **Shooter Velocity Reading** (`Shooter.java`)
     - Changed from left motor to right motor for velocity sensing
-    - `getVelocity()`: `return -leftShooter.getVelocity()` → `return rightShooter.getVelocity()`
-    - `isShooterAtSetPoint()`: Updated to use `rightShooter.getVelocity()`
-    - `periodic()`: `currentVel` now reads from `rightShooter`
-    - Right motor runs negative power, so velocity is already negative (no need to negate)
+    - Velocity convention: all positive values now (matching original Prototype2026-Public)
+    - Power application: `leftShooter.setPower(power)`, `rightShooter.setPower(-power)`
+    - Velocity reading: `return -rightShooter.getVelocity()` (returns positive)
+
+- **Intake Motor Direction** (`Intake.java`)
+    - Changed from `REVERSE` to `FORWARD`
+    - Fixed reversed intake direction issue
+
+- **Turret Software Limits** (`Turret.java`)
+    - Fixed D-Pad Right not working issue
+    - Corrected power clamping logic for `reverseMotor = true`
+    - Positive power now correctly decreases angle, negative increases angle
+
+- **Turret Software Limit Range** (`TurretConstants.java`)
+    - Changed from ±95° to **±190°** (total 380° range)
+    - User requested larger range
+
+### Changed
+- **Shooter Velocity Setpoints** (`ShooterConstants.java`)
+    - `slowVelocity`: 700 → **950** TPS
+    - `midVelocity`: 950 → **1500** TPS (user adjusted from 1290)
+    - `fastVelocity`: 1420 → **2100** TPS (user adjusted from 1930)
+
+- **Shooter Braking Logic** (`ShooterConstants.java`)
+    - `motorBrakeThreshold`: 200 → **100** TPS (brake when 100 TPS over target)
+    - `motorBrakePower`: 0.3 → **0.5** (stronger reverse braking)
+
+### Added
+- **ShooterPIDTuner** (`tests/ShooterPIDTuner.java`)
+    - New test program for Shooter velocity PIDF tuning
+    - Pure Dashboard control (no gamepad)
+    - Implements full PIDF loop for velocity control
+    - Parameters: `targetVelocity`, `enabled`, `kP`, `kI`, `kD`, `kF`, `tolerance`
 
 ### Removed
 - **Emergency Disable Controls** (`SoloBlue.java`, `SoloRed.java`)
     - Removed LT+LB (Intake disable), RT+RB (Shooter disable), LB+RB (Turret disable)
-    - Removed related variables: `lastIntakeDisableCombo`, `lastShooterDisableCombo`, `lastTurretDisableCombo`
-    - Removed telemetry section "EMERGENCY DISABLE (GP2)"
     - Gamepad2 now only has: **Right Stick Button = Set Home**
 
 ### Current Gamepad2 Functions (SoloBlue/SoloRed)

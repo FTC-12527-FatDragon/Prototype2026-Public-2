@@ -34,8 +34,8 @@ public class Intake extends SubsystemBase {
      */
     public Intake(HardwareMap hardwareMap) {
         intakeMotor = hardwareMap.get(DcMotorEx.class, IntakeConstants.intakeMotorName);
-        // Direction: REVERSE (motor is mounted inverted)
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        // Direction: FORWARD
+        intakeMotor.setDirection(DcMotorSimple.Direction.FORWARD);
         isRunning = true; // Intake runs continuously by default after initialization
     }
 

@@ -47,6 +47,10 @@ public class Shooter extends SubsystemBase {
         rightShooter = hardwareMap.get(DcMotorEx.class, ShooterConstants.rightShooterName);
         leftShooter = hardwareMap.get(DcMotorEx.class, ShooterConstants.leftShooterName);
         shooterServo = hardwareMap.get(Servo.class, ShooterConstants.shooterServoName);
+        
+        // No setMode needed - default mode works for both setPower() and getVelocity()
+        // (Same as original Prototype2026-Public)
+        
         pidController = new PIDController(ShooterConstants.kP,
                 ShooterConstants.kI, ShooterConstants.kD);
         
@@ -152,13 +156,12 @@ public class Shooter extends SubsystemBase {
     }
 
     /**
-     * Gets the current velocity of the right shooter motor.
-     * @return Velocity in ticks per second (negative value).
+     * Gets the current velocity of the shooter.
+     * @return Velocity in ticks per second (positive).
      */
     public double getVelocity() {
-        // rightShooter runs negative (setPower(-power)), so velocity is already negative
-        // This matches the target velocity convention (negative values)
-        return rightShooter.getVelocity();
+        // rightShooter runs negative, so negate to get positive
+        return -rightShooter.getVelocity();
     }
 
     /**
@@ -172,7 +175,7 @@ public class Shooter extends SubsystemBase {
     /**
      * Checks if the shooter has reached its target velocity.
      * Considers adaptiveVelocity if set.
-     * @return True if at or above (more negative) target speed.
+     * @return True if current velocity is within epsilon of target.
      */
     public boolean isShooterAtSetPoint() {
         // Determine target velocity: use adaptive if set, otherwise use state velocity
@@ -184,9 +187,9 @@ public class Shooter extends SubsystemBase {
         }
         
         // Check if current velocity is close to target velocity
-        // rightShooter velocity is already negative, matching targetVel convention
+        // rightShooter runs negative, so negate to get positive
         return Util.epsilonEqual(
-                rightShooter.getVelocity(),
+                -rightShooter.getVelocity(),
                 targetVel,
                 ShooterConstants.shooterEpsilon
         );
@@ -210,8 +213,8 @@ public class Shooter extends SubsystemBase {
         }
         
         // Control loop runs always (even in STOP state) to maintain idle speed if set
-        // rightShooter velocity is already negative, matching target velocity convention
-        double currentVel = rightShooter.getVelocity();
+        // rightShooter runs negative, so negate to get positive
+        double currentVel = -rightShooter.getVelocity();
         
         // Use adaptive velocity if set, otherwise use state velocity
         double targetVel = (adaptiveVelocity != 0) ? adaptiveVelocity : shooterState.shooterVelocity;
@@ -227,26 +230,26 @@ public class Shooter extends SubsystemBase {
             power = ShooterConstants.idlePower;
         } else {
             // Pseudo Closed-loop with Feedforward + Motor Braking
-            // Note: Velocities are negative (e.g., Target: -1500, Current: -1800)
+            // Note: Velocities are positive (e.g., Target: 1500, Current: 1200)
             // 
             // Three states:
-            // 1. Too slow (currentVel > targetVel): Full power to accelerate
-            // 2. Too fast by > 200 TPS (currentVel < targetVel - 200): Reverse motor to brake
+            // 1. Too slow (currentVel < targetVel): Full power to accelerate
+            // 2. Too fast by > 200 TPS (currentVel > targetVel + 200): Reverse motor to brake
             // 3. Near target: Feedforward power to maintain
             
             double overspeedThreshold = ShooterConstants.motorBrakeThreshold;  // 200 TPS
             
-            if (currentVel > targetVel) {
+            if (currentVel < targetVel) {
                 // Too slow, apply max power to accelerate
                 power = 1.0;
-            } else if (currentVel < targetVel - overspeedThreshold) {
+            } else if (currentVel > targetVel + overspeedThreshold) {
                 // Too fast by more than threshold, apply reverse power to brake
                 // Since we don't have physical brake, use motor reverse as brake
                 power = -ShooterConstants.motorBrakePower;
             } else {
                 // Near target speed, use feedforward to maintain
-                // Ratio = |target| / maxVelocityTPS
-                power = Math.abs(targetVel) / ShooterConstants.maxVelocityTPS;
+                // Ratio = target / maxVelocityTPS
+                power = targetVel / ShooterConstants.maxVelocityTPS;
             }
         }
         
@@ -272,7 +275,7 @@ public class Shooter extends SubsystemBase {
             velocityPIDF.reset();  // Reset integrator when idle
         } else {
             // PIDF Velocity Control
-            // Note: currentVel and targetVel are both negative
+            // Note: currentVel and targetVel are both positive
             // PIDF calculates: error = setpoint - measurement = targetVel - currentVel
             // Output = kP*error + kI*integral + kD*derivative + kF*setpoint
             
@@ -284,8 +287,7 @@ public class Shooter extends SubsystemBase {
         }
         */
 
-        // Apply power
-        // leftShooter runs positive, rightShooter runs negative
+        // Apply power (reversed from original - this robot's motors are wired differently)
         leftShooter.setPower(power);
         rightShooter.setPower(-power);
 
