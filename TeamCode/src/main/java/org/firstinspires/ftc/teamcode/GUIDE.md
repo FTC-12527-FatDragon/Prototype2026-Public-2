@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-02 (Autonomous Path Programs)
+> FTC Team 12527 | Last Updated: 2026-02-03 (Parallel Turret Optimization)
 
 ---
 
@@ -532,10 +532,36 @@ public abstract class AutoCommandBase extends LinearOpMode {
     protected Transit transit;
     protected Intake intake;
     protected Vision vision;
+    protected Turret turret;      // Turret control
     
     public abstract Command runAutoCommand();  // Define your sequence | 定义序列
     public abstract Pose getStartPose();       // Define start position | 定义起始位置
 }
+```
+
+#### Auto-Start Features | 自动启动功能
+
+When auto starts (`waitForStart()`):
+
+自动程序启动时：
+
+```java
+// Intake runs at full power for entire auto
+intake.setFullPower(true);
+intake.startIntake();
+```
+
+#### Auto Cleanup | 自动清理
+
+When auto ends (`onAutoStopped()`):
+
+自动程序结束时：
+
+```java
+intake.stopIntake();
+intake.setFullPower(false);
+shooter.setShooterState(Shooter.ShooterState.STOP);
+turret.enableSoftLock(0);  // Return to forward
 ```
 
 #### Safety Check | 安全检查
@@ -591,6 +617,13 @@ Start → Intake Approach (curve) → Intake Position → [Wait] → Shoot Posit
 | INTAKE | (9.60, 8.13) | (134.40, 8.13) |
 | SHOOT | (54.97, 9.10) | (89.03, 9.10) |
 
+#### Turret Control | 云台控制
+
+| Alliance | Turret Angle | Target |
+|----------|--------------|--------|
+| Blue | +21.3° (right) | Blue basket (4, 140) |
+| Red | -21.3° (left) | Red basket (140, 140) |
+
 #### Sequence | 序列
 
 ```java
@@ -598,11 +631,13 @@ new SequentialCommandGroup(
     new AutoDriveCommand(follower, path1),  // Curve to approach
     new AutoDriveCommand(follower, path2),  // To intake
     intakeWaitCommand(),                     // Wait 1s
-    new AutoDriveCommand(follower, path3),  // To shoot
-    shootCommand(),                          // Wait 3s
     
-    // LOOP: Repeats 10 times (auto ends before completing all)
-    oneCycleCommand(),
+    // Turret starts moving BEFORE drive to shoot
+    new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
+    new AutoDriveCommand(follower, path3),  // To shoot (turret moving)
+    shootAfterTurretReady(),                 // Wait for turret → shoot
+    
+    // LOOP: Repeats 10 times
     oneCycleCommand(),
     // ...
 );
@@ -660,6 +695,46 @@ All Red variants are mirrored from Blue at x=72:
 - `new_x = 144 - old_x`
 - `heading 180° → 0°`
 - `heading 145° → 35°`
+
+#### Turret Control at SHOOT_POSE | 射击位置云台控制
+
+When robot reaches SHOOT_POSE, turret aims at basket:
+
+当机器人到达射击位置时，云台瞄准篮筐：
+
+| Alliance | Turret Angle | Target |
+|----------|--------------|--------|
+| Blue | +43.3° (right) | Blue basket (4, 140) |
+| Red | -43.3° (left) | Red basket (140, 140) |
+
+**Shoot Sequence (Parallel Optimized) | 射击序列（并行优化）**:
+
+Turret starts moving during path to shoot position, not after arrival.
+
+云台在移动到射击点的过程中就开始转向，而不是到达后再转。
+
+```
+1. turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)  // Set target BEFORE drive
+2. AutoDriveCommand (turret moves during drive)   // Parallel movement
+3. WaitForTurretCommand (wait until at target)    // Precise check
+4. shooter.setShooterState(SLOW)                  // Start shooting
+5. Wait SHOOT_WAIT_MS (1500ms)                    // Shoot duration
+6. shooter.setShooterState(STOP)                  // Stop
+7. turret.enableSoftLock(0)                       // Return forward
+```
+
+**WaitForTurretCommand**: Uses `turret.isAtTarget()` with same tolerance as PIDF control.
+
+**WaitForTurretCommand**: 使用与 PIDF 控制相同的 tolerance 检测云台是否到位。
+
+#### Dashboard Parameters | 仪表盘参数
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `TURRET_SHOOT_ANGLE_DEG` | ±43.3° (Near) / ±21.3° (Far) | Turret aim angle |
+| `TURRET_TIMEOUT_MS` | 1000ms | Max wait for turret |
+| `SHOOT_WAIT_MS` | 1500ms (Near) / 3000ms (Far) | Shooting duration |
+| `INTAKE_WAIT_MS` | 500ms (Near) / 1000ms (Far) | Collection time |
 
 #### Key Differences | 关键区别
 

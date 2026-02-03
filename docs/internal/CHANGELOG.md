@@ -4,6 +4,93 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-03] - Parallel Turret Movement Optimization
+
+### Added
+- **WaitForTurretCommand** (`commands/autocommands/WaitForTurretCommand.java`)
+    - Waits for turret to reach target angle using `turret.isAtTarget()`
+    - Uses same tolerance as Turret PIDF control (`TurretConstants.positionTolerance`)
+    - Configurable timeout (default 1000ms)
+    - Finishes when turret at target OR timeout reached
+
+### Changed
+- **All 6 Auto Programs** - Parallel Turret Movement
+    - Turret starts moving BEFORE path to shoot position begins
+    - Robot movement and turret rotation happen simultaneously (saves ~300ms per shot)
+    - Shooting only starts after `WaitForTurretCommand` confirms turret is at target
+
+- **Far Auto Series** - Added Turret Control
+    - `BlueFarAuto`: `TURRET_SHOOT_ANGLE_DEG = +21.3°` (aim right)
+    - `RedFarAuto`: `TURRET_SHOOT_ANGLE_DEG = -21.3°` (aim left)
+
+- **Shoot Sequence (All Autos)**
+    - Old: `Arrive → Set turret → Wait 300ms → Shoot` (sequential)
+    - New: `Set turret → Drive (turret moving) → Wait for turret → Shoot` (parallel)
+
+### Technical Details
+```java
+// New parallel approach
+new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
+new AutoDriveCommand(follower, pathToShoot),  // Turret moves during drive
+new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),  // Precise wait
+// ... shoot sequence
+```
+
+### Turret Angles Summary
+| Auto Program | Angle | Direction |
+|--------------|-------|-----------|
+| BlueFarAuto | +21.3° | Right |
+| RedFarAuto | -21.3° | Left |
+| BlueNearAuto | +43.3° | Right |
+| RedNearAuto | -43.3° | Left |
+| BlueNearInfinite | +43.3° | Right |
+| RedNearInfinite | -43.3° | Left |
+
+---
+
+## [2026-02-02] - Auto Turret Control & Intake Enhancement
+
+### Added
+- **AutoCommandBase** - Turret Subsystem Integration
+    - Added `protected Turret turret;` member variable
+    - Turret initialized in `initialize()` method
+    - All auto programs now have access to turret control
+
+- **Auto Intake Full Power**
+    - Intake runs at full power (`setFullPower(true)`) throughout entire auto
+    - Starts immediately after `waitForStart()`
+    - Stops in `onAutoStopped()` cleanup
+
+- **Auto Cleanup (`onAutoStopped()`)**
+    - Intake: `stopIntake()` + `setFullPower(false)`
+    - Shooter: `setShooterState(STOP)`
+    - Turret: `enableSoftLock(0)` (return to forward)
+
+### Changed
+- **Near Auto Series** - Turret Aiming at SHOOT_POSE
+    - All 4 Near programs now control turret during shooting
+    - Blue versions: `TURRET_SHOOT_ANGLE_DEG = +43.3°` (aim right)
+    - Red versions: `TURRET_SHOOT_ANGLE_DEG = -43.3°` (aim left)
+    - New `TURRET_SETTLE_MS = 300ms` for turret stabilization
+
+- **shootCommand() Sequence** (Near autos)
+    1. Set turret to `TURRET_SHOOT_ANGLE_DEG`
+    2. Wait `TURRET_SETTLE_MS` (300ms)
+    3. Start shooter (SLOW mode)
+    4. Wait `SHOOT_WAIT_MS` (1500ms)
+    5. Stop shooter
+    6. Return turret to 0° (forward)
+
+### Dashboard Parameters (Near Auto)
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `TURRET_SHOOT_ANGLE_DEG` | ±43.3° | Turret angle for shooting |
+| `TURRET_SETTLE_MS` | 300ms | Turret stabilization time |
+| `SHOOT_WAIT_MS` | 1500ms | Shooting duration |
+| `INTAKE_WAIT_MS` | 500ms | Intake collection time |
+
+---
+
 ## [2026-02-02] - Autonomous Path Programs
 
 ### Added

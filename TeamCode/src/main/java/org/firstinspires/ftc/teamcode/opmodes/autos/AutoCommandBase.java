@@ -12,7 +12,8 @@ import org.firstinspires.ftc.teamcode.subsystems.drive.Constants;
 import org.firstinspires.ftc.teamcode.subsystems.intake.Intake;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
-import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
+import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
+// import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;  // DISABLED: Vision not used in auto currently
 
 /**
  * Base class for Autonomous OpModes.
@@ -24,7 +25,8 @@ public abstract class AutoCommandBase extends LinearOpMode {
     protected Transit transit;
     protected Intake intake;
     protected Follower follower;
-    protected Vision vision;
+    // protected Vision vision;  // DISABLED: Vision not used in auto currently
+    protected Turret turret;
 
     /**
      * Abstract method to define the autonomous command sequence.
@@ -53,7 +55,8 @@ public abstract class AutoCommandBase extends LinearOpMode {
         shooter = new Shooter(hardwareMap);
         transit = new Transit(hardwareMap);
         intake = new Intake(hardwareMap);
-        vision = new Vision(hardwareMap);
+        // vision = new Vision(hardwareMap);  // DISABLED: Vision not used in auto currently
+        turret = new Turret(hardwareMap);
         // NOTE: MecanumDrivePinpoint is NOT initialized here to avoid resetting Pinpoint and conflicting with Follower
     }
 
@@ -68,6 +71,10 @@ public abstract class AutoCommandBase extends LinearOpMode {
         CommandScheduler.getInstance().schedule(toRun);
 
         waitForStart();
+        
+        // Start intake at full power for entire auto
+        intake.setFullPower(true);
+        intake.startIntake();
 
         // Main Loop (aligned with Prototype2026-Public)
         while (opModeIsActive() && !isStopRequested()) {
@@ -121,7 +128,17 @@ public abstract class AutoCommandBase extends LinearOpMode {
     /**
      * Executes when auto is stopped. Can be overridden for cleanup.
      */
-    public void onAutoStopped() {}
+    public void onAutoStopped() {
+        // Stop intake when auto ends
+        intake.stopIntake();
+        intake.setFullPower(false);
+        
+        // Stop shooter
+        shooter.setShooterState(Shooter.ShooterState.STOP);
+        
+        // Return turret to 0
+        turret.enableSoftLock(0);
+    }
 }
 
 // Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

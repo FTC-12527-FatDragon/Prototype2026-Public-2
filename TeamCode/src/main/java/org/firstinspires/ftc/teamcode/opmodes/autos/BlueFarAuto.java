@@ -13,23 +13,14 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
 import org.firstinspires.ftc.teamcode.commands.autocommands.AutoDriveCommand;
+import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForTurretCommand;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 
 /**
  * Blue Far Auto - Continuous intake/shoot cycles (Blue Alliance, Far side)
  * 
- * Sequence:
- * 1. Path 1: Curve to intake approach
- * 2. Path 2: Drive to intake position
- * 3. Wait 1s for intake
- * 4. Path 3: Drive to shoot position
- * 5. Wait 3s for shoot
- * 
- * LOOP (until auto ends):
- * 6. Path 4: Drive to intake position
- * 7. Wait 1s for intake
- * 8. Path 5: Drive to shoot position
- * (repeat 6-7-8)
+ * Turret starts moving during path to shoot position (saves time).
+ * Shooting only starts after turret reaches target angle.
  */
 @Config
 @Autonomous(name = "Blue Far Auto", group = "Autos")
@@ -50,6 +41,12 @@ public class BlueFarAuto extends AutoCommandBase {
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 1000;
     public static long SHOOT_WAIT_MS = 3000;
+    public static long TURRET_TIMEOUT_MS = 1000;  // Max wait for turret to reach angle
+    
+    // Turret angle when at SHOOT_POSE (relative to robot heading)
+    // Positive = clockwise from robot front (right)
+    // Blue Far: +21.3° (aim right toward blue basket at 4, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = 21.3;
     
     @Override
     public Pose getStartPose() {
@@ -57,13 +54,21 @@ public class BlueFarAuto extends AutoCommandBase {
     }
     
     /**
-     * Shoot command sequence - starts shooter, waits, then stops
+     * Shoot command (after turret is already moving):
+     * Wait for turret → shoot → stop → return turret to 0
      */
-    private Command shootCommand() {
+    private Command shootAfterTurretReady() {
         return new SequentialCommandGroup(
+                // 1. Wait for turret to reach target (uses same tolerance as PIDF)
+                new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
+                // 2. Start shooter
                 new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
+                // 3. Wait for shoot
                 new WaitCommand(SHOOT_WAIT_MS),
-                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP))
+                // 4. Stop shooter
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP)),
+                // 5. Return turret to 0 (forward) for next intake
+                new InstantCommand(() -> turret.enableSoftLock(0))
         );
     }
     
@@ -76,7 +81,7 @@ public class BlueFarAuto extends AutoCommandBase {
     
     /**
      * One cycle: Intake → Shoot
-     * Path 4 (to intake) → Wait → Path 5 (to shoot)
+     * Turret starts moving during path to shoot position.
      */
     private Command oneCycleCommand() {
         // Need to rebuild paths each time since PathChain can only be used once
@@ -103,9 +108,16 @@ public class BlueFarAuto extends AutoCommandBase {
                 .build();
         
         return new SequentialCommandGroup(
+                // Go to intake
                 new AutoDriveCommand(follower, toIntake),
                 intakeWaitCommand(),
-                new AutoDriveCommand(follower, toShoot)
+                
+                // Start turret moving BEFORE path to shoot
+                new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
+                // Drive to shoot (turret moving simultaneously)
+                new AutoDriveCommand(follower, toShoot),
+                // Wait for turret + shoot
+                shootAfterTurretReady()
         );
     }
     
@@ -148,8 +160,6 @@ public class BlueFarAuto extends AutoCommandBase {
                 .setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(180))
                 .build();
         
-        // Note: Path 4 and 5 (cycle paths) are built dynamically in oneCycleCommand()
-        
         // Build command sequence
         return new SequentialCommandGroup(
                 // === INITIAL APPROACH ===
@@ -161,24 +171,24 @@ public class BlueFarAuto extends AutoCommandBase {
                 // Wait for intake
                 intakeWaitCommand(),
                 
-                // Path 3: Drive to shoot position
+                // Start turret moving BEFORE path to shoot
+                new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
+                // Path 3: Drive to shoot position (turret moving simultaneously)
                 new AutoDriveCommand(follower, path3),
+                // Wait for turret + shoot
+                shootAfterTurretReady(),
                 
-                // Shoot
-                shootCommand(),
-                
-                // === CONTINUOUS CYCLES (6-7-8 repeating) ===
-                // Each cycle: Intake → Wait → Shoot
-                oneCycleCommand(),  // Cycle 2
-                oneCycleCommand(),  // Cycle 3
-                oneCycleCommand(),  // Cycle 4
-                oneCycleCommand(),  // Cycle 5
-                oneCycleCommand(),  // Cycle 6
-                oneCycleCommand(),  // Cycle 7
-                oneCycleCommand(),  // Cycle 8
-                oneCycleCommand(),  // Cycle 9
-                oneCycleCommand(),  // Cycle 10
-                oneCycleCommand()   // Cycle 11 (auto will end before completing all)
+                // === CONTINUOUS CYCLES ===
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand(),
+                oneCycleCommand()
         );
     }
 }
