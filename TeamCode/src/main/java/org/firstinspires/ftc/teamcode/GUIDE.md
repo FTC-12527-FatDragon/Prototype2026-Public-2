@@ -1,13 +1,14 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-02 (Turret PIDF Tuned)
+> FTC Team 12527 | Last Updated: 2026-02-03 (Complete Documentation Update)
 
 ---
 
 ## Table of Contents | 目录
 
 1. [Architecture Overview | 架构概览](#1-architecture-overview--架构概览)
+   - [Robot Container | 机器人容器](#robot-container--机器人容器)
 2. [Subsystems | 子系统](#2-subsystems--子系统)
    - [MecanumDrivePinpoint | 底盘驱动](#21-mecanumdrivepinpoint--底盘驱动)
    - [Shooter | 发射器](#22-shooter--发射器)
@@ -16,14 +17,22 @@
    - [Vision | 视觉](#25-vision--视觉)
    - [Turret | 云台](#26-turret--云台)
 3. [Commands | 命令](#3-commands--命令)
+   - [WaitForTurretCommand](#waitforturretcommand)
 4. [TeleOp Structure | 手动程序结构](#4-teleop-structure--手动程序结构)
+   - [SoloEmergency | 紧急备用](#soloemergency---backup-opmode--紧急备用程序)
 5. [Autonomous Structure | 自动程序结构](#5-autonomous-structure--自动程序结构)
    - [Far Auto | 远起点自动](#51-far-auto--远起点自动)
    - [Near Auto | 近起点自动](#52-near-auto--近起点自动)
 6. [Key Algorithms | 核心算法](#6-key-algorithms--核心算法)
 7. [Configuration & Tuning | 配置与调参](#7-configuration--tuning--配置与调参)
+   - [AutoConstants](#autoconstants)
+   - [TeleOpConstants](#teleopconstants)
 8. [Control Mapping | 手柄映射](#8-control-mapping--手柄映射)
 9. [Complete Method Reference | 完整方法参考](#9-complete-method-reference--完整方法参考)
+   - [DashboardUtil](#97-dashboardutil--dashboard-工具)
+   - [FunctionalButton](#98-functionalbutton--函数式按钮)
+   - [Units](#99-units--单位转换)
+   - [DriverControls](#910-drivercontrols--驾驶员控制绑定)
 10. [Troubleshooting Guide | 故障排查指南](#10-troubleshooting-guide--故障排查指南)
 11. [Debug Telemetry Reference | 调试遥测参考](#11-debug-telemetry-reference--调试遥测参考)
 12. [Quick Debug Checklist | 快速调试清单](#12-quick-debug-checklist--快速调试清单)
@@ -84,6 +93,33 @@ teamcode/
 | **Pinpoint Odometry** | Robot localization | 机器人定位 |
 | **Limelight3A** | AprilTag vision | 视觉识别 |
 | **FTC Dashboard** | Real-time tuning | 实时调参 |
+
+### Robot Container | 机器人容器
+
+**File | 文件**: `subsystems/Robot.java`
+
+**Purpose | 用途**: Central container for all TeleOp subsystems. NOT for Autonomous!
+
+为手动程序初始化并持有所有子系统引用。不用于自动程序！
+
+```java
+public class Robot {
+    public final MecanumDrivePinpoint drive;  // Only in TeleOp
+    public final Shooter shooter;
+    public final Transit transit;
+    public final Intake intake;
+    public final Vision vision;   // Can be disabled (ENABLE_VISION)
+    public final Turret turret;   // Can be disabled (ENABLE_TURRET)
+}
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `ENABLE_VISION` | `false` | Enable Limelight vision |
+| `ENABLE_TURRET` | `true` | Enable turret motor |
+
+> **Important | 重要**: For Autonomous, use `AutoCommandBase` which uses `Follower` instead of `MecanumDrivePinpoint`.
+> 自动程序使用 `AutoCommandBase`，它用 `Follower` 而不是 `MecanumDrivePinpoint`。
 
 ---
 
@@ -156,20 +192,22 @@ public enum ShooterState {
 **伪闭环前馈控制 + 电机刹车**（不是PID）：
 
 ```java
-if (currentVel > targetVel) {
+if (currentVel < targetVel) {
     power = 1.0;  // Too slow → max power | 太慢 → 满功率
-} else if (currentVel < targetVel - 200) {
-    power = -0.3;  // Too fast > 200 TPS → motor brake | 太快超200 → 电机刹车
+} else if (currentVel > targetVel + 100) {
+    power = -0.5;  // Too fast > 100 TPS → motor brake | 太快超100 → 电机刹车
 } else {
-    power = |targetVel| / maxVelocityTPS;  // Near target → feedforward | 接近目标 → 前馈
+    power = targetVel / maxVelocityTPS;  // Near target → feedforward | 接近目标 → 前馈
 }
 ```
 
 | State | Condition | Power |
 |-------|-----------|-------|
-| Too slow | `vel > target` | 1.0 (accelerate) |
-| Too fast > 200 TPS | `vel < target - 200` | -0.3 (motor brake) |
+| Too slow | `vel < target` | 1.0 (accelerate) |
+| Too fast > 100 TPS | `vel > target + 100` | **-0.5** (motor brake) |
 | Near target | otherwise | feedforward |
+
+> **Updated 2026-02-03**: Brake threshold changed from 200 to **100** TPS, brake power from 0.3 to **0.5**
 
 Why not PID? Flywheel momentum makes PID oscillate. Pseudo Closed-loop converges faster.
 
@@ -381,8 +419,8 @@ public enum LockMode {
 | `turretMotorName` | `"turretMotor"` | Motor hardware name (encoder wired to this port) |
 | `ENCODER_CPR` | 8192 | REV Through Bore Encoder V2 counts per revolution |
 | `GEAR_RATIO` | 116/22 ≈ 5.27 | Motor turns 116× for turret to turn 22× |
-| `minAngleDeg` | -95° | Left limit |
-| `maxAngleDeg` | 95° | Right limit |
+| `minAngleDeg` | **-190°** | Left limit (updated 2026-02-03) |
+| `maxAngleDeg` | **190°** | Right limit (updated 2026-02-03) |
 | `unwindThreshold` | 100° | Unwind to 0° if target exceeds this |
 | `kP` | 0.0004 | Position P gain ✅ Tuned 2026-02-02 |
 | `kI` | 0.0 | Not used |
@@ -467,6 +505,23 @@ public class ExampleCommand extends CommandBase {
 | `AutoTransitCommand` | Fire with position check | 位置检查后发射 |
 | `AutoAlignCommand` | Turn to align with goal tag | 转向对准目标标签 |
 | `HoldPositionCommand` | Hold current position | 保持当前位置 |
+| `WaitForTurretCommand` | Wait for turret to reach target | 等待云台到达目标角度 |
+
+#### WaitForTurretCommand
+
+Waits for turret to reach its target angle before proceeding. Used in auto to ensure turret is aimed before shooting.
+
+等待云台到达目标角度后再继续。用于自动程序确保云台瞄准后再射击。
+
+```java
+// Usage example | 使用示例
+new WaitForTurretCommand(turret)           // Default 1s timeout
+new WaitForTurretCommand(turret, 1500)     // Custom 1.5s timeout
+```
+
+**Finish Conditions | 结束条件**:
+1. `turret.isOnTarget()` returns true | 云台到位
+2. Timeout reached | 超时
 
 ---
 
@@ -479,6 +534,7 @@ public class ExampleCommand extends CommandBase {
 | `Solo.java` | "Solo" | **Chassis auto-aim**, turret fixed at 0° | **底盘自瞄**，云台固定0° |
 | `SoloBlue.java` | "Solo Blue" | **Turret auto-aim** for Blue alliance | **云台自瞄**，瞄蓝框 |
 | `SoloRed.java` | "Solo Red" | **Turret auto-aim** for Red alliance | **云台自瞄**，瞄红框 |
+·| `SoloEmergency.java` | "!!! EMERGENCY !!!" | **Backup** - No sensors, pure open-loop | **紧急备用** - 无传感器纯开环 |
 
 ### OpMode Comparison | 操作模式对比
 
@@ -493,6 +549,49 @@ public class ExampleCommand extends CommandBase {
 **Key Behavior | 关键行为:**
 - **Soft Lock + A Button** → Chassis rotates to aim at goal (turret stays at 0°)
 - **Hard Lock** → Turret auto-rotates to aim (chassis manual control only)
+
+### SoloEmergency - Backup OpMode | 紧急备用程序
+
+**File | 文件**: `opmodes/teleops/SoloEmergency.java`
+
+**Name**: "!!! EMERGENCY !!!" (group: !Emergency)
+
+**When to Use | 何时使用**:
+- Pinpoint odometry not working | 里程计不工作
+- Limelight disconnected | Limelight 断开
+- Subsystem initialization crash | 子系统初始化崩溃
+- Need robot-centric drive | 需要机器人坐标系驾驶
+
+**Features | 特点**:
+
+| Feature | Description | 特点 | 说明 |
+|---------|-------------|------|------|
+| **Drive** | Robot-centric (no field-centric) | **驾驶** | 机器人坐标系 |
+| **Shooter** | Pure open-loop power (no velocity feedback) | **发射** | 纯开环功率 |
+| **Transit** | 1 second spin-up wait before fire | **传输** | 1秒预热后发射 |
+| **Turret** | D-Pad manual control only | **云台** | 仅D-Pad手动控制 |
+
+**Open-Loop Power Settings | 开环功率设置**:
+
+| Mode | Power | Servo Angle |
+|------|-------|-------------|
+| SLOW | 0.30 | 0.04 |
+| MID | 0.45 | 0.5 |
+| FAST | 0.60 | 1.0 |
+| IDLE | 0.27 | 0.5 |
+
+**Controls | 操作**:
+- Left Stick: Move (robot-centric) | 移动（机器人坐标系）
+- Right Stick: Turn | 转向
+- LB: Slow shot | 近射
+- RB: Mid shot | 中射
+- RT: Fast shot | 远射
+- LT: Intake + Fire (after 1s spin-up) | 进球 + 发射
+- D-Pad Up: Reverse intake | 反转进球
+- D-Pad L/R: Turret manual | 云台手动
+
+> ⚠️ **WARNING**: This mode has no safety features! Use only when main programs fail.
+> 此模式无安全功能！仅在主程序失效时使用。
 
 **Entry Point | 入口点**: `opmodes/teleops/Solo.java` (or `SoloBlue.java`, `SoloRed.java`)
 
@@ -532,10 +631,36 @@ public abstract class AutoCommandBase extends LinearOpMode {
     protected Transit transit;
     protected Intake intake;
     protected Vision vision;
+    protected Turret turret;      // Turret control
     
     public abstract Command runAutoCommand();  // Define your sequence | 定义序列
     public abstract Pose getStartPose();       // Define start position | 定义起始位置
 }
+```
+
+#### Auto-Start Features | 自动启动功能
+
+When auto starts (`waitForStart()`):
+
+自动程序启动时：
+
+```java
+// Intake runs at full power for entire auto
+intake.setFullPower(true);
+intake.startIntake();
+```
+
+#### Auto Cleanup | 自动清理
+
+When auto ends (`onAutoStopped()`):
+
+自动程序结束时：
+
+```java
+intake.stopIntake();
+intake.setFullPower(false);
+shooter.setShooterState(Shooter.ShooterState.STOP);
+turret.enableSoftLock(0);  // Return to forward
 ```
 
 #### Safety Check | 安全检查
@@ -562,77 +687,168 @@ if (currentPose.getX() < -10 || currentPose.getY() < -10) {
 
 ### 5.1 Far Auto | 远起点自动
 
-**Files | 文件**: `BlueFar.java`, `RedFar.java`, `BlueFarShanghai.java`, etc.
+**Files | 文件**: `BlueFarAuto.java`, `RedFarAuto.java`
 
-**Strategy | 策略**: Start far from goal, push samples into scoring zone.
+**Strategy | 策略**: Continuous intake/shoot cycles from far starting position.
 
-从远离目标的位置出发，将样本推入得分区。
+从远起点位置持续执行采集/发射循环。
+
+#### Available Programs | 可用程序
+
+| Program | Alliance | Starting Position |
+|---------|----------|-------------------|
+| Blue Far Auto | Blue | (54.97, 9.10) |
+| Red Far Auto | Red | (89.03, 9.10) |
 
 #### Path Structure | 路径结构
 
 ```
-Start → Shoot (preload) → Sample1 → PushZone → Sample2 → Shoot → ... → Park
-起点   → 发射（预装）    → 样本1  → 推球区    → 样本2  → 发射  → ... → 停靠
+Start → Intake Approach (curve) → Intake Position → [Wait] → Shoot Position → [Shoot]
+     ↓
+     └── LOOP: Intake → [Wait] → Shoot (repeats until auto ends)
 ```
 
-#### Typical Far Auto Sequence | 典型远起点自动序列
+#### Key Positions | 关键位置
+
+| Position | Blue (x, y) | Red (x, y) |
+|----------|-------------|------------|
+| START | (54.97, 9.10) | (89.03, 9.10) |
+| INTAKE | (9.60, 8.13) | (134.40, 8.13) |
+| SHOOT | (54.97, 9.10) | (89.03, 9.10) |
+
+#### Turret Control | 云台控制
+
+| Alliance | Turret Angle | Target |
+|----------|--------------|--------|
+| Blue | +21.3° (right) | Blue basket (4, 140) |
+| Red | -21.3° (left) | Red basket (140, 140) |
+
+#### Sequence | 序列
 
 ```java
 new SequentialCommandGroup(
-    // 1. Initialize intake
-    new InstantCommand(() -> intake.startIntake()),
+    new AutoDriveCommand(follower, path1),  // Curve to approach
+    new AutoDriveCommand(follower, path2),  // To intake
+    intakeWaitCommand(),                     // Wait 1s
     
-    // 2. Path 1: Start → Shoot Pose (with shooter acceleration)
-    new InstantCommand(() -> shooter.setShooterState(FAST)),
-    new AutoDriveCommand(follower, path1, 3000),  // 3s timeout
-    new TransitCommand(transit, shooter).withTimeout(1300),
+    // Turret starts moving BEFORE drive to shoot
+    new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
+    new AutoDriveCommand(follower, path3),  // To shoot (turret moving)
+    shootAfterTurretReady(),                 // Wait for turret → shoot
     
-    // 3. Path 2: Shoot → Sample pickup
-    new InstantCommand(() -> shooter.setShooterState(STOP)),
-    new AutoDriveCommand(follower, path2, 5000),
-    
-    // 4. Path 3: Push sample to zone
-    new AutoDriveCommand(follower, path3, 4000),
-    
-    // 5. Path 4: Return to shoot
-    new InstantCommand(() -> shooter.setShooterState(FAST)),
-    new AutoDriveCommand(follower, path4, 4000),
-    new TransitCommand(transit, shooter).withTimeout(1300),
-    
-    // 6. Park
-    new AutoDriveCommand(follower, pathPark, 3000)
+    // LOOP: Repeats 10 times
+    oneCycleCommand(),
+    // ...
 );
 ```
 
 ### 5.2 Near Auto | 近起点自动
 
-**Files | 文件**: `BlueNear.java`, `RedNear.java`, etc.
+**Files | 文件**: `BlueNearAuto.java`, `RedNearAuto.java`, `BlueNearInfinite.java`, `RedNearInfinite.java`
 
-**Strategy | 策略**: Start near goal, pick up samples and shoot directly.
+**Strategy | 策略**: Sample collection from multiple positions with shooting cycles.
 
-从靠近目标的位置出发，拾取样本并直接发射。
+从多个位置采集样本并发射。
 
-#### Path Structure | 路径结构
+#### Available Programs | 可用程序
+
+| Program | Alliance | Description |
+|---------|----------|-------------|
+| Blue Near Auto | Blue | 9-path sample collection |
+| Red Near Auto | Red | Mirrored from Blue |
+| Blue Near Infinite | Blue | Extended with 3x Sample 2 cycles |
+| Red Near Infinite | Red | Mirrored from Blue Infinite |
+| Red Near Auto 2 | Red | Alternative path + RedNear continuation |
+
+#### BlueNearAuto Path Structure | 路径结构
 
 ```
-Start → Shoot → Sample1 → Intermediate → Shoot → Sample2 → Shoot → ... → Park
-起点   → 发射  → 样本1   → 中间点      → 发射  → 样本2   → 发射  → ... → 停靠
+Start → Shoot → Sample1(far) → Intake1 → [Shoot] → Intake2 → [Shoot] → Sample2(bottom) → [Shoot] → Final
 ```
+
+#### BlueNearInfinite Path Structure | 扩展版路径结构
+
+```
+Start → Shoot → Sample1 → Intake1 → [Shoot]
+     ↓
+     └── Sample2 Cycle (x3): Shoot → Sample2(145°) → [Shoot]
+     ↓
+     └── BlueNear Path 5+: Intake2 → [Shoot] → Sample3 → [Shoot] → Final
+```
+
+#### Key Positions (Blue) | 关键位置（蓝方）
+
+| Position | Coordinates | Heading |
+|----------|-------------|---------|
+| START | (25.68, 127.97) | 90° |
+| SHOOT | (45.20, 101.15) | 180° |
+| SAMPLE1 | (8.79, 59.30) | 180° |
+| INTAKE1 | (16.45, 69.66) | 180° |
+| SAMPLE2 | (12.08, 61.02) | 145° |
+| INTAKE2 | (16.17, 83.46) | 180° |
+| SAMPLE3 | (14.19, 35.31) | 180° |
+| FINAL | (15.96, 101.11) | 180° |
+
+#### Coordinate Mirroring | 坐标对称
+
+All Red variants are mirrored from Blue at x=72:
+- `new_x = 144 - old_x`
+- `heading 180° → 0°`
+- `heading 145° → 35°`
+
+#### Turret Control at SHOOT_POSE | 射击位置云台控制
+
+When robot reaches SHOOT_POSE, turret aims at basket:
+
+当机器人到达射击位置时，云台瞄准篮筐：
+
+| Alliance | Turret Angle | Target |
+|----------|--------------|--------|
+| Blue | +43.3° (right) | Blue basket (4, 140) |
+| Red | -43.3° (left) | Red basket (140, 140) |
+
+**Shoot Sequence (Parallel Optimized) | 射击序列（并行优化）**:
+
+Turret starts moving during path to shoot position, not after arrival.
+
+云台在移动到射击点的过程中就开始转向，而不是到达后再转。
+
+```
+1. turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)  // Set target BEFORE drive
+2. AutoDriveCommand (turret moves during drive)   // Parallel movement
+3. WaitForTurretCommand (wait until at target)    // Precise check
+4. shooter.setShooterState(SLOW)                  // Start shooting
+5. Wait SHOOT_WAIT_MS (1500ms)                    // Shoot duration
+6. shooter.setShooterState(STOP)                  // Stop
+7. turret.enableSoftLock(0)                       // Return forward
+```
+
+**WaitForTurretCommand**: Uses `turret.isAtTarget()` with same tolerance as PIDF control.
+
+**WaitForTurretCommand**: 使用与 PIDF 控制相同的 tolerance 检测云台是否到位。
+
+#### Dashboard Parameters | 仪表盘参数
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `TURRET_SHOOT_ANGLE_DEG` | ±43.3° (Near) / ±21.3° (Far) | Turret aim angle |
+| `TURRET_TIMEOUT_MS` | 1000ms | Max wait for turret |
+| `SHOOT_WAIT_MS` | 1500ms (Near) / 3000ms (Far) | Shooting duration |
+| `INTAKE_WAIT_MS` | 500ms (Near) / 1000ms (Far) | Collection time |
 
 #### Key Differences | 关键区别
 
 | Aspect | Far Auto | Near Auto |
 |--------|----------|-----------|
-| Distance | 128" to goal | 24" to goal |
-| Speed | FAST (1420 TPS) | SLOW (700 TPS) |
-| Strategy | Push samples | Direct pickup |
+| Distance | ~55" to goal | ~25" to goal |
+| Speed | SLOW | SLOW |
+| Strategy | Continuous loops | Multi-position collection |
 | Path type | Mostly straight | Mostly curved |
 
 | 方面 | 远起点 | 近起点 |
 |------|--------|--------|
-| 距离 | 128" 到目标 | 24" 到目标 |
-| 转速 | FAST (1420 TPS) | SLOW (700 TPS) |
-| 策略 | 推球 | 直接拾取 |
+| 距离 | ~55" 到目标 | ~25" 到目标 |
+| 策略 | 持续循环 | 多点采集 |
 | 路径类型 | 多为直线 | 多为曲线 |
 
 ---
@@ -701,7 +917,46 @@ moveRobotFieldRelative(
 | `ShooterConstants.java` | Velocities, servo positions | 转速、舵机位置 |
 | `IntakeConstants.java` | Power levels | 功率档位 |
 | `TransitConstants.java` | Servo positions | 舵机位置 |
+| `TurretConstants.java` | Turret PIDF, limits, gear ratio | 云台PIDF、限位、齿比 |
 | `Constants.java` | Pedro Pathing config | Pedro Pathing 配置 |
+| `AutoConstants.java` | Auto positions (poses) | 自动程序位置 |
+| `TeleOpConstants.java` | Trigger thresholds | 触发阈值 |
+
+#### AutoConstants
+
+**File | 文件**: `opmodes/autos/AutoConstants.java`
+
+Stores all coordinates and poses used in autonomous programs.
+
+存储自动程序中使用的所有坐标和位姿。
+
+**Key Constants | 关键常量**:
+
+| Category | Constants |
+|----------|-----------|
+| **Start Poses** | `BLUE_START_POSE`, `RED_START_POSE`, `BLUE_FAR_START_POSE`, `RED_FAR_START_POSE` |
+| **Scoring** | `BLUE_BASKET_POSE`, `RED_BASKET_POSE` |
+| **Samples** | `BLUE_SAMPLE_1_POSE`, `BLUE_SAMPLE_2_POSE`, `BLUE_SAMPLE_3_POSE` (+ RED mirrors) |
+| **Gates** | `BLUE_GATE_POSE`, `RED_GATE_POSE` |
+| **Safety** | `POSITION_LOWER_BOUND = -10.0` (emergency stop trigger) |
+
+**Coordinate Mirror | 坐标镜像**:
+- `new_x = 144 - old_x`
+- Heading 180° → 0°
+
+#### TeleOpConstants
+
+**File | 文件**: `opmodes/teleops/TeleOpConstants.java`
+
+Trigger thresholds for gamepad controls. Dashboard tunable (`@Config`).
+
+手柄触发阈值。可通过 Dashboard 调整（`@Config`）。
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `slowShootTriggerThreshold` | 0.5 | RT threshold for fast shot |
+| `transitFireTriggerThreshold` | 0.3 | LT threshold for transit fire |
+| `intakeFullPowerTriggerThreshold` | 0.5 | LT threshold for full power intake |
 
 ### FTC Dashboard Tuning | FTC Dashboard 调参
 
@@ -722,8 +977,11 @@ All `@Config` annotated classes can be tuned in real-time:
 | `Drive Only Test` | Drivetrain-only test (4 motors + Pinpoint) | 仅底盘测试 |
 | `DashTuner` | Generic PIDF tuning with encoder safety | 通用PIDF调参 + 编码器保护 |
 | `Turret Motor Tuner` | Turret-specific PIDF tuning ✅ | 云台专用PIDF调参 |
-| `Chassis Align Tuner` | Chassis rotation PID tuning | 底盘旋转PID调参 |
-| `Tuning` | Comprehensive tuning for all subsystems | 全子系统综合调参 |
+| `Chassis Heading Tuner` | Chassis rotation PIDF tuning (MecanumDrive) | 底盘旋转PIDF调参 |
+| `Shooter PID Tuner` | Shooter velocity PIDF tuning (Dashboard only) | 发射器速度PIDF调参 |
+| `Tuning` | Pedro Pathing comprehensive tuning (menu) | Pedro Pathing综合调参（菜单） |
+| `PathTunerOpMode` | Path visualization on Panels Dashboard | 路径可视化调试 |
+| `ColorSensorTest` | REV Color/Distance sensor test | 颜色/距离传感器测试 |
 
 #### Drive Only Test
 
@@ -808,24 +1066,109 @@ reverseMotor = true
 
 #### Chassis Align Tuner
 
-Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
+Heading PIDF tuner for chassis rotation. Uses MecanumDrivePinpoint. Based on PedroPathing's HeadingTuner design.
 
-底盘旋转 PID 调参程序。使用 Pinpoint 里程计。
+底盘旋转 PIDF 调参程序。使用 MecanumDrivePinpoint。基于 PedroPathing 的 HeadingTuner 设计。
+
+**How it Works | 工作原理**:
+1. Robot locks to starting heading (0°) on start | 启动时锁定当前朝向
+2. PIDF constantly tries to maintain this heading | PIDF 持续维持该朝向
+3. Turn robot by hand → PIDF resists | 用手转动机器人 → PIDF 抵抗
+4. Tune parameters until response is smooth | 调参直到响应平滑
+
+**Dashboard Parameters | Dashboard 参数** (✅ Tuned 2026-02-03):
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled` | **true** | Enable rotation control (default ON) |
+| `tolerance` | 2.0 | Degrees tolerance |
+| `maxPower` | **1.0** | Max rotation power |
+| `kP` | **0.03** | Proportional ✅ |
+| `kI` | 0.0 | Integral coefficient |
+| `kD` | **0.003** | Derivative ✅ |
+| `kF` | 0.0 | Static friction (not needed) |
+| `iMax` | 50.0 | Max integral accumulation |
+| `iZone` | 30.0 | Disable I if error > iZone |
+
+**No Gamepad Controls** - Pure Dashboard tuning  
+**无手柄控制** - 纯 Dashboard 调参
+
+**Note**: Turret motor is auto-locked (BRAKE mode) during this test.  
+**Direction-Aware kF**: Applied based on output direction - `fTerm = signum(output) * kF`
+
+#### Shooter PID Tuner
+
+Velocity PIDF tuner for shooter flywheel. Pure Dashboard control.
+
+发射器飞轮速度 PIDF 调参程序。纯 Dashboard 控制。
 
 **Dashboard Parameters | Dashboard 参数**:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enabled` | false | Enable rotation control |
-| `targetHeading` | 0 | Target angle (degrees) |
-| `tolerance` | 2.0 | Degrees tolerance |
-| `maxPower` | 0.5 | Max rotation power |
-| `kP/kI/kD` | 0.02/0/0.005 | PID coefficients |
+| `enabled` | false | Enable velocity control |
+| `targetVelocity` | 1000 | Target velocity (TPS) |
+| `tolerance` | 50 | Velocity tolerance (TPS) |
+| `kP` | 0.0005 | Proportional |
+| `kI` | 0.0 | Integral |
+| `kD` | 0.0 | Derivative |
+| `kF` | 0.00036 | Feedforward (velocity proportional) |
 
-**Gamepad Controls | 手柄控制**:
-- **A**: Reset heading to 0° | 重置朝向
-- **D-Pad Left/Right**: ±15° adjustment | ±15° 调整
+**Usage | 使用方法**:
+1. Set `targetVelocity` (e.g., 1500)
+2. Set `enabled = true`
+3. Observe velocity response on Dashboard graph
+4. Tune kF first (feedforward), then kP for correction
 
-**Note**: Turret motor is auto-locked (BRAKE mode) during this test.
+#### Tuning (Pedro Pathing)
+
+**File | 文件**: `tests/Tuning.java`
+
+Comprehensive tuning OpMode from Pedro Pathing library. Select which component to tune via Dashboard menu.
+
+Pedro Pathing 库的综合调参程序。通过 Dashboard 菜单选择要调试的组件。
+
+**Available Tuners | 可用调试项**:
+
+| Tuner | Purpose | 用途 |
+|-------|---------|------|
+| `HeadingTuner` | Heading PID | 朝向 PID |
+| `TranslationalTuner` | XY translation PID | XY 平移 PID |
+| `ForwardVelocityTuner` | Forward velocity | 前进速度 |
+| `StrafeVelocityTuner` | Strafe velocity | 平移速度 |
+| `TurnVelocityTuner` | Turn velocity | 转向速度 |
+| `DriveVelocityTuner` | Drive velocity | 驱动速度 |
+| `LocalizationTest` | Odometry test | 里程计测试 |
+
+**Usage | 使用方法**:
+1. Run "Tuning" OpMode
+2. Use gamepad to select tuner (see on-screen menu)
+3. Start selected tuner
+4. Adjust parameters in Dashboard
+
+#### PathTunerOpMode
+
+**File | 文件**: `test/PathTunerOpMode.java`
+
+Visualizes auto paths on Panels Dashboard for debugging path definitions.
+
+在 Panels Dashboard 上可视化自动路径，用于调试路径定义。
+
+**Features | 功能**:
+- View BezierLine and BezierCurve paths | 查看直线和曲线路径
+- Dynamic path testing via Dashboard | 通过 Dashboard 动态测试路径
+- Path playback | 路径回放
+
+#### ColorSensorTest
+
+**File | 文件**: `tests/ColorSensorTest.java`
+
+Test OpMode for REV Color/Distance sensor. Displays RGBA values, distance, and HSV conversion.
+
+REV 颜色/距离传感器测试程序。显示 RGBA 值、距离和 HSV 转换。
+
+**Telemetry Output | 遥测输出**:
+- RGB and Alpha values | RGB 和透明度值
+- Distance (cm) | 距离
+- HSV conversion | HSV 转换
 
 ---
 
@@ -840,28 +1183,26 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 | **Left Stick Button** | Reset heading | ✅ | 重置朝向 | ✅ |
 | **Right Stick Button** | Toggle turret lock | ❌ Disabled | 切换云台锁定 | ❌ 禁用 |
 | **A** | Chassis auto-aim (SOFT_LOCK only) | ⚠️ Disabled | 底盘自瞄（仅软锁） | ⚠️ 禁用 |
+| **Y** | Turret go to home (physical 0°) | ✅ | 云台回到原点 | ✅ |
+| **B** | Set current turret position as home | ✅ | 设置当前位置为原点 | ✅ |
 | **LB** | Slow shot (700 TPS) | ✅ | 近射 | ✅ |
 | **RB** | Mid shot (950 TPS) | ✅ | 中射 | ✅ |
 | **RT** | Fast shot (1420 TPS) | ✅ | 远射 | ✅ |
 | **LT** | Full power intake (1.0) + Transit fire | ✅ | 全功率进球 + 发射 | ✅ |
 | **X** | Adaptive fire (Blue) | ❌ Disabled | 自适应发射（蓝） | ❌ 禁用 |
-| **B** | Adaptive fire (Red) | ❌ Disabled | 自适应发射（红） | ❌ 禁用 |
 | **D-Pad Up** | Reverse intake | ✅ | 反转进球 | ✅ |
+| **D-Pad Left** (hold) | Turret CCW (power 0.5) | ✅ | 云台逆时针转（开环） | ✅ |
+| **D-Pad Right** (hold) | Turret CW (power -0.5) | ✅ | 云台顺时针转（开环） | ✅ |
 | **D-Pad Down** | ~~Manual brake~~ | ❌ Removed | ~~手动刹车~~ | ❌ 已删除 |
 
-### Secondary Controller (Gamepad2) - Emergency Disable | 副手柄 - 紧急禁用
+### Secondary Controller (Gamepad2) | 副手柄
 
-| Combo | Function | 功能 |
-|-------|----------|------|
-| **LT + LB** | Toggle Intake disable | 切换 Intake 禁用 |
-| **RT + RB** | Toggle Shooter disable | 切换 Shooter 禁用 |
-| **LB + RB** | Toggle Turret disable | 切换云台禁用 |
+| Button | Function | 功能 |
+|--------|----------|------|
+| **Right Stick Button** | Set current turret position as home | 设置当前云台位置为原点 |
 
-> **Usage | 使用方法**: Press combo once to disable subsystem (motor power → 0). Press again to re-enable.
-> 按一次组合键禁用子系统（电机功率→0），再按一次恢复。
-
-> **Telemetry | 遥测显示**: Check `=== EMERGENCY DISABLE (GP2) ===` section for status (OK / DISABLED).
-> 查看 telemetry 中的紧急禁用状态区域确认各子系统状态。
+> **Note | 注意**: Emergency disable combos have been removed. Gamepad2 is now only used for turret home calibration.
+> 紧急禁用组合键已被删除。Gamepad2 现在仅用于云台原点校准。
 
 #### A Button Behavior | A 键行为
 
@@ -874,10 +1215,21 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 > **Note**: A button triggers chassis auto-aim ONLY. Shoot buttons (LB/RB/RT) do NOT trigger auto-aim.
 > **注意**: A 键仅触发底盘自瞄。射击键不触发自瞄。
 
-#### Turret Lock Toggle | 云台锁定切换 (⚠️ DISABLED | 已禁用)
+#### Turret Manual Control (Solo) | 云台手动控制
 
-> **Note**: Turret controls are currently disabled. See `DriverControls.java` and `TeleOp.java`.
-> **注意**: 云台控制当前已禁用。
+| Control | Action | 控制 | 动作 |
+|---------|--------|------|------|
+| **D-Pad Left** (hold) | Rotate CCW at power 0.5 | 按住 | 逆时针转（0.5功率） |
+| **D-Pad Right** (hold) | Rotate CW at power -0.5 | 按住 | 顺时针转（-0.5功率） |
+| **Release** | Stop (power 0) | 松开 | 停止 |
+| **Y** | Go to home position | 按下 | 回到原点 |
+| **B** | Set current position as home | 按下 | 设置当前为原点 |
+
+> **Open Loop**: D-Pad control is pure open-loop (direct power, no PID).  
+> **开环控制**: D-Pad 是纯开环控制（直接设置功率，无 PID）。
+
+> **Home Function**: Encoder preserves absolute position across restarts. Press B to set current position as "home", then Y to return to it.  
+> **归位功能**: Encoder 会在重启后保留绝对位置。按 B 设置当前位置为"原点"，按 Y 返回原点。
 
 ---
 
@@ -885,12 +1237,15 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 
 ### Shooter Velocities | 发射器转速
 
-| State | TPS | Distance | 状态 | 转速 | 距离 |
-|-------|-----|----------|------|------|------|
-| STOP | -600 | - | 停止 | -600 | - |
-| SLOW | -700 | ≤24" | 慢速 | -700 | ≤62cm |
-| MID | -950 | ~77" | 中速 | -950 | ~196cm |
-| FAST | -1420 | ≥128" | 快速 | -1420 | ≥325cm |
+| State | TPS | 状态 | 转速 |
+|-------|-----|------|------|
+| STOP | 600 | 停止/怠速 | 600 |
+| SLOW | **950** | 近射 | **950** |
+| MID | **1500** | 中射 | **1500** |
+| FAST | **2100** | 远射 | **2100** |
+
+> **Note**: Velocities are now positive values (updated 2026-02-03)  
+> **注意**: 转速现在使用正值（2026-02-03 更新）
 
 ### Servo Positions | 舵机位置
 
@@ -952,9 +1307,12 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 | Method | Description | 描述 |
 |--------|-------------|------|
 | `setShooterState(state)` | Set STOP/SLOW/MID/FAST state | 设置状态 |
-| `getVelocity()` | Get current velocity (TPS) | 获取当前转速 |
+| `getVelocity()` | Get current velocity from **right motor** (TPS) | 从**右电机**获取当前转速 |
 | `getTargetVelocity()` | Get target velocity | 获取目标转速 |
 | `isShooterAtSetPoint()` | Check if at target velocity | 检查是否达到目标转速 |
+
+> **Note**: Velocity is read from right motor (`rightShooter.getVelocity()`). Right motor runs negative power, so velocity is already negative.
+> **注意**: 转速从右电机读取。右电机功率为负，所以速度已经是负值。
 | **Adaptive Velocity | 自适应转速** | |
 | `setAdaptiveVelocity(velocity)` | Set adaptive velocity | 设置自适应转速 |
 | `getAdaptiveVelocity()` | Get adaptive velocity | 获取自适应转速 |
@@ -1032,6 +1390,91 @@ Heading PID tuner for chassis rotation. Uses Pinpoint odometry.
 | `normalizeAngleRadians(angle)` | Normalize angle to [-π, π] | 归一化角度到[-π, π] |
 | `visionPoseToPinpointPose(pose3d)` | Convert Limelight pose | 转换Limelight位姿 |
 | `debugVisionConversion(pose3d)` | Debug conversion steps | 调试转换步骤 |
+
+### 9.7 DashboardUtil | Dashboard 工具
+
+**File | 文件**: `utils/DashboardUtil.java`
+
+Utility for drawing robot visualization on FTC Dashboard field overlay.
+
+在 FTC Dashboard 场地叠加层上绘制机器人可视化的工具。
+
+| Method | Description | 描述 |
+|--------|-------------|------|
+| `drawRobot(packet, pose)` | Draw robot circle + heading on field | 在场地上绘制机器人圆圈+朝向 |
+
+**Parameters | 参数**:
+- `ROBOT_RADIUS = 9.0` inches
+- `ROBOT_COLOR = "#3F51B5"` (Blue)
+
+### 9.8 FunctionalButton | 函数式按钮
+
+**File | 文件**: `utils/FunctionalButton.java`
+
+Custom Button class that accepts a `BooleanSupplier` for flexible trigger conditions. Used for combining multiple gamepad inputs.
+
+接受 `BooleanSupplier` 的自定义按钮类，用于灵活的触发条件。用于组合多个手柄输入。
+
+```java
+// Example: Fire only when LT AND (LB OR RB OR RT) pressed
+new FunctionalButton(
+    () -> leftTrigger && (leftBumper || rightBumper || rightTrigger)
+).whenHeld(new TransitCommand(...));
+```
+
+### 9.9 Units | 单位转换
+
+**File | 文件**: `utils/Units.java`
+
+Comprehensive unit conversion utilities.
+
+全面的单位转换工具。
+
+| Method | Description | 描述 |
+|--------|-------------|------|
+| `metersToFeet(m)` | Meters → Feet | 米 → 英尺 |
+| `feetToMeters(ft)` | Feet → Meters | 英尺 → 米 |
+| `metersToInches(m)` | Meters → Inches | 米 → 英寸 |
+| `inchesToMeters(in)` | Inches → Meters | 英寸 → 米 |
+| `degreesToRadians(deg)` | Degrees → Radians | 度 → 弧度 |
+| `radiansToDegrees(rad)` | Radians → Degrees | 弧度 → 度 |
+| `radiansToRotations(rad)` | Radians → Rotations | 弧度 → 圈数 |
+| `degreesToRotations(deg)` | Degrees → Rotations | 度 → 圈数 |
+| `rotationsToDegrees(rot)` | Rotations → Degrees | 圈数 → 度 |
+| `rotationsToRadians(rot)` | Rotations → Radians | 圈数 → 弧度 |
+| `rotationsPerMinuteToRadiansPerSecond(rpm)` | RPM → rad/s | 转/分 → 弧度/秒 |
+| `millisecondsToSeconds(ms)` | ms → s | 毫秒 → 秒 |
+| `secondsToMilliseconds(s)` | s → ms | 秒 → 毫秒 |
+| `mmToInches(mm)` | mm → Inches | 毫米 → 英寸 |
+| `inchesToMm(in)` | Inches → mm | 英寸 → 毫米 |
+
+### 9.10 DriverControls | 驾驶员控制绑定
+
+**File | 文件**: `controls/DriverControls.java`
+
+Centralizes all gamepad button bindings. Called from TeleOp `initialize()`.
+
+集中管理所有手柄按钮绑定。从 TeleOp 的 `initialize()` 调用。
+
+**Method Signature | 方法签名**:
+```java
+public static void bind(GamepadEx gamepad, Robot robot, boolean[] isAuto)
+```
+
+**Bindings Created | 创建的绑定**:
+
+| Button | Action |
+|--------|--------|
+| Left Stick Button | Reset heading |
+| Left Bumper | SLOW shot (hold) |
+| Right Bumper | MID shot (hold) |
+| Right Trigger ≥ 0.5 | FAST shot (hold) |
+| Left Trigger ≥ 0.3 + Shoot | Transit fire |
+| D-Pad Up | Reverse intake |
+| Left Trigger ≥ 0.5 | Full power intake |
+
+> **Note**: Turret lock mode toggle (Right Stick Button) is currently commented out/disabled.
+> 云台锁定模式切换（右摇杆按钮）当前已注释/禁用。
 
 ---
 

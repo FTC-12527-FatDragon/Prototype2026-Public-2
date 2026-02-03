@@ -229,8 +229,10 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         // Get current robot heading from Pinpoint, adjusting for offset
         double botHeading = pinpoint.getHeading(DriveConstants.angleUnit) - yawOffset;
         
-        // Transform field-relative input to robot-relative coordinates
-        // Note: rotX is negated later by -rotX * strafingBalance, so the formula accounts for that
+        // Rotate the movement vector by the negative of the robot's heading to transform field-relative input to robot-relative
+        // If the robot moves with the heading (Robot Centric behavior in Field Centric mode), 
+        // it usually means the heading compensation is inverted. 
+        // Trying Positive botHeading here to reverse the compensation direction.
         double rotX = fun * Math.cos(botHeading) - forward * Math.sin(botHeading);
         double rotY = fun * Math.sin(botHeading) + forward * Math.cos(botHeading);
 
