@@ -34,8 +34,8 @@ public class DriveConstants {
 
     // Pedro Pathing / Tuning Constants (Empirically determined)
     public static double linearScalar = -1.1404723265, angularScalar = 0.99446;
-    public static double forwardVelocity = 77.1362, strafeVelocity = 55.71;
-    public static double forwardAcceleration = -40.36, strafeAcceleration = -35.0;
+    public static double forwardVelocity = 05.7063, strafeVelocity = 68.933;
+    public static double forwardAcceleration = -29.424, strafeAcceleration = -60.009;
 
     // PID Coefficients (if used for active control)
     public static double kP_xy = 0.02;

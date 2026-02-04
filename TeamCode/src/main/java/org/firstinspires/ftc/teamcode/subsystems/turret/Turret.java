@@ -47,6 +47,7 @@ public class Turret extends SubsystemBase {
     // Position hold state (for MANUAL mode brake)
     private boolean holdingPosition = false;
     private double holdAngleDeg = 0;
+    private int holdTicks = 0;  // Hold position in encoder ticks (for PID)
     
     // Position control state
     private double targetAngleDeg = 0;
@@ -156,18 +157,18 @@ public class Turret extends SubsystemBase {
         }
         
         // Apply software limits if calibrated
-        // NOTE: Motor is REVERSED, so positive power = decrease angle, negative power = increase angle
+        // NOTE: positive power = angle decreases (left), negative power = angle increases (right)
         if (isCalibrated) {
             double currentAngle = getAngleDegrees();
             
             // Prevent moving past limits
-            // Positive power → angle decreases → limit at minAngleDeg
+            // Positive power → angle decreases → limit at minAngleDeg (left limit)
             if (currentAngle <= TurretConstants.minAngleDeg && power > 0) {
-                power = 0;  // Don't go further left (past min)
+                power = 0;  // Don't go further left
             }
-            // Negative power → angle increases → limit at maxAngleDeg
+            // Negative power → angle increases → limit at maxAngleDeg (right limit)
             if (currentAngle >= TurretConstants.maxAngleDeg && power < 0) {
-                power = 0;  // Don't go further right (past max)
+                power = 0;  // Don't go further right
             }
         }
         
@@ -197,6 +198,7 @@ public class Turret extends SubsystemBase {
             return;
         }
         holdAngleDeg = getAngleDegrees();
+        holdTicks = getEncoderPosition();  // Record ticks for PID (same as TurretMotorTuner)
         holdingPosition = true;
     }
     
@@ -347,6 +349,18 @@ public class Turret extends SubsystemBase {
         // 1 turret rotation = ENCODER_CPR * GEAR_RATIO ticks
         double ticksPerTurretRotation = TurretConstants.ENCODER_CPR * TurretConstants.GEAR_RATIO;
         return (ticks / ticksPerTurretRotation) * 360.0;
+    }
+    
+    /**
+     * Converts degrees to encoder ticks.
+     * Inverse of ticksToDegrees.
+     * @param degrees Angle in degrees
+     * @return Equivalent encoder ticks
+     */
+    private double degreesToTicks(double degrees) {
+        // 1 turret rotation = ENCODER_CPR * GEAR_RATIO ticks
+        double ticksPerTurretRotation = TurretConstants.ENCODER_CPR * TurretConstants.GEAR_RATIO;
+        return (degrees / 360.0) * ticksPerTurretRotation;
     }
 
     /**
@@ -1082,15 +1096,29 @@ public class Turret extends SubsystemBase {
             default:
                 // Manual power mode with optional position hold
                 if (holdingPosition) {
-                    // Use PID to actively hold position (stronger than passive BRAKE)
-                    double error = holdAngleDeg - currentAngle;
-                    positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
-                    double pidPower = positionPIDF.calculate(currentAngle, holdAngleDeg);
-                    double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
-                    outputPower = pidPower + feedforward;
-                    // Clamp to max output
-                    outputPower = Math.max(-TurretConstants.maxOutputPower, 
-                                           Math.min(TurretConstants.maxOutputPower, outputPower));
+                    // Use TICKS for PID calculation (SAME AS TurretMotorTuner!)
+                    // kP/kI/kD/kF are tuned for ticks
+                    int currentTicks = getEncoderPosition();
+                    double errorTicks = holdTicks - currentTicks;
+                    
+                    // Tolerance check (100 ticks ≈ 0.83°, same as TurretMotorTuner)
+                    double toleranceTicks = 100;
+                    if (Math.abs(errorTicks) <= toleranceTicks) {
+                        outputPower = 0;  // Within tolerance, no correction needed
+                    } else {
+                        // PID controller using TICKS (exactly like TurretMotorTuner)
+                        positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
+                        double pidPower = positionPIDF.calculate(currentTicks, holdTicks);
+                        
+                        // Add F manually with direction awareness (static friction compensation)
+                        // F pushes in the direction of error (same as TurretMotorTuner)
+                        double feedforward = (errorTicks > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                        outputPower = pidPower + feedforward;
+                        
+                        // Clamp to max output
+                        outputPower = Math.max(-TurretConstants.maxOutputPower, 
+                                               Math.min(TurretConstants.maxOutputPower, outputPower));
+                    }
                 } else {
                     // Direct power control
                     outputPower = targetPower;
@@ -1099,13 +1127,13 @@ public class Turret extends SubsystemBase {
         }
         
         // Apply software limits
-        // NOTE: Motor is REVERSED, so positive power = decrease angle, negative power = increase angle
+        // NOTE: positive power = angle decreases (left), negative power = angle increases (right)
         if (isCalibrated) {
-            // Positive power → angle decreases → limit at minAngleDeg
+            // Positive power → angle decreases → limit at minAngleDeg (left limit)
             if (currentAngle <= TurretConstants.minAngleDeg && outputPower > 0) {
                 outputPower = 0;
             }
-            // Negative power → angle increases → limit at maxAngleDeg
+            // Negative power → angle increases → limit at maxAngleDeg (right limit)
             if (currentAngle >= TurretConstants.maxAngleDeg && outputPower < 0) {
                 outputPower = 0;
             }

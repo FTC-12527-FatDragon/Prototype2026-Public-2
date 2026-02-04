@@ -36,6 +36,17 @@ public class Shooter extends SubsystemBase {
     
     // Emergency disable flag (controlled by gamepad2)
     private boolean disabled = false;
+    
+    // FAST mode stability check: must be at setpoint for 0.3s before firing
+    private long fastModeStableStartTime = 0;
+    private boolean fastModeWasAtSetpoint = false;
+    private static final long FAST_MODE_STABLE_TIME_MS = 300;  // 0.3 seconds
+    
+    // 50ms window velocity calculation (for external encoder stability)
+    private int windowStartPos = 0;
+    private long windowStartTime = 0;
+    private double calculatedVelocity = 0;
+    private static final long VELOCITY_WINDOW_MS = 50;  // Calculate velocity every 50ms
 
     /**
      * Constructor for Shooter.
@@ -156,12 +167,36 @@ public class Shooter extends SubsystemBase {
     }
 
     /**
-     * Gets the current velocity of the shooter.
-     * @return Velocity in ticks per second (positive).
+     * Gets the current velocity of the shooter (calculated via 50ms window).
+     * @return Velocity in ticks per second (always positive).
      */
     public double getVelocity() {
-        // rightShooter runs negative, so negate to get positive
-        return -rightShooter.getVelocity();
+        return calculatedVelocity;
+    }
+    
+    /**
+     * Updates velocity using 50ms window calculation.
+     * Called every loop iteration, but only recalculates when window expires.
+     * Always returns positive velocity (shooter spins one direction).
+     */
+    private void updateVelocity() {
+        int currentPos = rightShooter.getCurrentPosition();
+        long currentTime = System.currentTimeMillis();
+        long elapsed = currentTime - windowStartTime;
+        
+        if (elapsed >= VELOCITY_WINDOW_MS) {
+            // Calculate velocity: |deltaPos| / deltaTime
+            int deltaPos = Math.abs(currentPos - windowStartPos);  // Always positive
+            double rawVelocity = deltaPos * 1000.0 / elapsed;      // TPS
+            
+            // Light smoothing
+            calculatedVelocity = ShooterConstants.filterAlpha * rawVelocity 
+                    + (1 - ShooterConstants.filterAlpha) * calculatedVelocity;
+            
+            // Reset window
+            windowStartPos = currentPos;
+            windowStartTime = currentTime;
+        }
     }
 
     /**
@@ -183,16 +218,38 @@ public class Shooter extends SubsystemBase {
         
         // If using state velocity and state is STOP, return false
         if (adaptiveVelocity == 0 && shooterState == ShooterState.STOP) {
+            fastModeWasAtSetpoint = false;  // Reset stability tracking
             return false;
         }
         
         // Check if current velocity is close to target velocity
-        // rightShooter runs negative, so negate to get positive
-        return Util.epsilonEqual(
-                -rightShooter.getVelocity(),
+        // Uses calculated velocity from 50ms window (always positive)
+        boolean atSetpoint = Util.epsilonEqual(
+                calculatedVelocity,
                 targetVel,
                 ShooterConstants.shooterEpsilon
         );
+        
+        // FAST mode: require 0.3s of continuous stability before allowing fire
+        if (shooterState == ShooterState.FAST) {
+            if (atSetpoint) {
+                if (!fastModeWasAtSetpoint) {
+                    // Just entered setpoint range, start timing
+                    fastModeStableStartTime = System.currentTimeMillis();
+                    fastModeWasAtSetpoint = true;
+                }
+                // Check if stable for required duration
+                long stableTime = System.currentTimeMillis() - fastModeStableStartTime;
+                return stableTime >= FAST_MODE_STABLE_TIME_MS;
+            } else {
+                // Lost setpoint, reset timing
+                fastModeWasAtSetpoint = false;
+                return false;
+            }
+        }
+        
+        // Other modes: immediate fire when at setpoint
+        return atSetpoint;
     }
 
 
@@ -212,56 +269,65 @@ public class Shooter extends SubsystemBase {
             return;
         }
         
+        // Initialize velocity window on first call
+        if (windowStartTime == 0) {
+            windowStartPos = rightShooter.getCurrentPosition();
+            windowStartTime = System.currentTimeMillis();
+        }
+        
+        // Update velocity using 50ms window (external encoder)
+        updateVelocity();
+        
         // Control loop runs always (even in STOP state) to maintain idle speed if set
-        // rightShooter runs negative, so negate to get positive
-        double currentVel = -rightShooter.getVelocity();
+        double currentVel = calculatedVelocity;  // Always positive
         
         // Use adaptive velocity if set, otherwise use state velocity
         double targetVel = (adaptiveVelocity != 0) ? adaptiveVelocity : shooterState.shooterVelocity;
         double power;
 
         // =================================================================
-        // OPTION 1: PSEUDO CLOSED-LOOP (Current Implementation)
-        // Pros: Fast acceleration, simple, with motor braking
-        // Cons: Not smooth, no fine control
+        // OPTION 1: PSEUDO CLOSED-LOOP (Disabled)
         // =================================================================
+        /*
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
-            // Idle mode: Use fixed open-loop power, no closed-loop control
             power = ShooterConstants.idlePower;
         } else {
-            // Pseudo Closed-loop with Feedforward + Motor Braking
-            // Note: Velocities are positive (e.g., Target: 1500, Current: 1200)
-            // 
-            // Three states:
-            // 1. Too slow (currentVel < targetVel): Full power to accelerate
-            // 2. Too fast by > 200 TPS (currentVel > targetVel + 200): Reverse motor to brake
-            // 3. Near target: Feedforward power to maintain
-            
-            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;  // 200 TPS
-            
+            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;
             if (currentVel < targetVel) {
-                // Too slow, apply max power to accelerate
-                power = 1.0;
+                if (shooterState == ShooterState.FAST && currentVel >= targetVel - 500) {
+                    power = 0.8;
+                } else {
+                    power = 1;
+                }
             } else if (currentVel > targetVel + overspeedThreshold) {
-                // Too fast by more than threshold, apply reverse power to brake
-                // Since we don't have physical brake, use motor reverse as brake
                 power = -ShooterConstants.motorBrakePower;
             } else {
-                // Near target speed, use feedforward to maintain
-                // Ratio = target / maxVelocityTPS
                 power = targetVel / ShooterConstants.maxVelocityTPS;
             }
         }
+        */
         
         // =================================================================
-        // OPTION 2: TRUE PIDF VELOCITY CONTROL (Uncomment to use)
-        // Pros: Smooth, precise velocity control
-        // Cons: Requires tuning kP, kI, kD, kF
-        // 
-        // To switch: Comment out OPTION 1 above, uncomment below
+        // OPTION 2: TRUE PIDF VELOCITY CONTROL (Disabled)
         // =================================================================
         /*
-        // Update PIDF coefficients from constants (allows Dashboard tuning)
+        velocityPIDF.setPIDF(ShooterConstants.kP, ShooterConstants.kI, ShooterConstants.kD, ShooterConstants.kF);
+        if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
+            power = ShooterConstants.idlePower;
+            velocityPIDF.reset();
+        } else {
+            double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
+            power = Math.max(0, Math.min(1, pidfOutput));
+        }
+        */
+        
+        // =================================================================
+        // OPTION 3: HYBRID (Pseudo Closed-loop + PIDF) - ACTIVE
+        // Far from target: Full power acceleration (fast response)
+        // Near target: PIDF fine control (precision)
+        // Overspeed: Motor brake
+        // =================================================================
+        // Update PIDF coefficients (allows Dashboard tuning)
         velocityPIDF.setPIDF(
                 ShooterConstants.kP,
                 ShooterConstants.kI,
@@ -270,22 +336,31 @@ public class Shooter extends SubsystemBase {
         );
         
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
-            // Idle mode: Use fixed open-loop power, no closed-loop control
+            // Idle mode: fixed open-loop power
             power = ShooterConstants.idlePower;
-            velocityPIDF.reset();  // Reset integrator when idle
+            velocityPIDF.reset();
         } else {
-            // PIDF Velocity Control
-            // Note: currentVel and targetVel are both positive
-            // PIDF calculates: error = setpoint - measurement = targetVel - currentVel
-            // Output = kP*error + kI*integral + kD*derivative + kF*setpoint
+            double error = targetVel - currentVel;
+            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;
+            double pidSwitchThreshold = ShooterConstants.pidSwitchThreshold;
             
-            // Calculate PIDF output
-            double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
-            
-            // Clamp output to [0, 1] (shooter only runs one direction)
-            power = Math.max(0, Math.min(1, pidfOutput));
+            if (error > pidSwitchThreshold) {
+                // Far from target: Full power acceleration (pseudo closed-loop)
+                power = 1.0;
+            } else if (error > 0) {
+                // Near target but still below: PIDF fine control
+                double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
+                power = Math.max(0, Math.min(1, pidfOutput));
+            } else if (error < -overspeedThreshold) {
+                // Overspeed by more than threshold: brake
+                power = -ShooterConstants.motorBrakePower;
+                velocityPIDF.reset();  // Reset integrator when braking
+            } else {
+                // At target or slightly over: PIDF maintain
+                double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
+                power = Math.max(-0.3, Math.min(1, pidfOutput));  // Allow slight negative for correction
+            }
         }
-        */
 
         // Apply power (reversed from original - this robot's motors are wired differently)
         leftShooter.setPower(power);

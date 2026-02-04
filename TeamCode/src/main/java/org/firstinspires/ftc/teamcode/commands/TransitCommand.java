@@ -24,8 +24,11 @@ public class TransitCommand extends CommandBase {
      */
     @Override
     public void execute() {
+        // Real-time velocity check: only fire when at target speed
         if (shooter.isShooterAtSetPoint()) {
             transit.setTransitState(Transit.TransitState.UP);
+        } else {
+            transit.setTransitState(Transit.TransitState.DOWN);
         }
     }
 

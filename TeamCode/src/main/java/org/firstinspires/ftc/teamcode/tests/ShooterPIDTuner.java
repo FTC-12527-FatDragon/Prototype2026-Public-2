@@ -35,10 +35,20 @@ public class ShooterPIDTuner extends LinearOpMode {
     // ==================== TOLERANCE ====================
     public static double tolerance = 50;  // TPS - considered "on target" if within this
     
+    // ==================== VELOCITY FILTER ====================
+    public static double filterAlpha = 0.15;  // Lower = smoother but slower response (0.1-0.3)
+    
+    
     private DcMotorEx leftShooter;
     private DcMotorEx rightShooter;
     private PIDFController pidfController;
     private FtcDashboard dashboard;
+    
+    // Fixed 50ms window velocity calculation (stable, always positive)
+    private int windowStartPos = 0;
+    private long windowStartTime = 0;
+    private double velocity = 0;
+    private static final long WINDOW_MS = 50;  // Calculate velocity every 50ms
     
     @Override
     public void runOpMode() {
@@ -58,12 +68,34 @@ public class ShooterPIDTuner extends LinearOpMode {
         
         waitForStart();
         
+        // Initialize
+        windowStartPos = rightShooter.getCurrentPosition();
+        windowStartTime = System.currentTimeMillis();
+        
         while (opModeIsActive()) {
             // Update PIDF from Dashboard
             pidfController.setPIDF(kP, kI, kD, kF);
             
-            // Read current velocity (rightShooter runs negative, negate to get positive)
-            double currentVel = -rightShooter.getVelocity();
+            // Fixed 50ms window velocity calculation
+            int currentPos = rightShooter.getCurrentPosition();
+            long currentTime = System.currentTimeMillis();
+            long elapsed = currentTime - windowStartTime;
+            
+            if (elapsed >= WINDOW_MS) {
+                // Calculate velocity only every 50ms (stable)
+                int deltaPos = Math.abs(currentPos - windowStartPos);  // Always positive
+                double rawVelocity = deltaPos * 1000.0 / elapsed;      // TPS (ticks per second)
+                
+                // Light smoothing
+                velocity = filterAlpha * rawVelocity + (1 - filterAlpha) * velocity;
+                
+                // Reset window
+                windowStartPos = currentPos;
+                windowStartTime = currentTime;
+            }
+            
+            double currentVel = velocity;  // Always positive
+            double sdkVelocity = Math.abs(rightShooter.getVelocity());  // For comparison
             double error = targetVelocity - currentVel;
             
             double power = 0;
@@ -97,13 +129,16 @@ public class ShooterPIDTuner extends LinearOpMode {
             packet.put("ON_TARGET", onTarget);
             packet.put("STATE", state);
             packet.put("targetVelocity", targetVelocity);
-            packet.put("currentVelocity", currentVel);
+            packet.put("currentVelocity", currentVel);      // Manual calculated (always positive)
+            packet.put("sdkVelocity", sdkVelocity);         // SDK |getVelocity()| for comparison
+            packet.put("encoderPosition", currentPos);       // Raw encoder position
             packet.put("error", error);
             packet.put("power", power);
             packet.put("kP", kP);
             packet.put("kI", kI);
             packet.put("kD", kD);
             packet.put("kF", kF);
+            packet.put("filterAlpha", filterAlpha);
             dashboard.sendTelemetryPacket(packet);
             
             // Driver Station telemetry
@@ -112,7 +147,9 @@ public class ShooterPIDTuner extends LinearOpMode {
             telemetry.addData("STATE", state);
             telemetry.addLine("---");
             telemetry.addData("Target", "%.0f TPS", targetVelocity);
-            telemetry.addData("Current", "%.0f TPS", currentVel);
+            telemetry.addData("Current (calc)", "%.0f TPS", currentVel);
+            telemetry.addData("SDK Velocity", "%.0f TPS", sdkVelocity);
+            telemetry.addData("Encoder", "%d", currentPos);
             telemetry.addData("Error", "%.0f TPS", error);
             telemetry.addData("Tolerance", "%.0f TPS", tolerance);
             telemetry.addLine("---");

@@ -49,17 +49,18 @@ public class TurretConstants {
     // Limelight distance from turret center
     public static double limelightOffsetMM = 140.86521;   // mm, limelight from turret center
     
-    // ==================== POSITION PID (Soft Lock) ====================
-    // PID constants for position control (in TICKS, not degrees!)
+    // ==================== POSITION PID ====================
+    // PID constants for position control (in TICKS!)
     // Tuned via TurretMotorTuner on 2026-02-02
+    // Note: SOFT_LOCK uses degrees, MANUAL holdingPosition uses ticks
     // IMPORTANT: Motor direction is REVERSED (reverseMotor = true)
-    public static double kP = 0.0004;   // Tuned 2026-02-02
+    public static double kP = 0.0003;   // Tuned 2026-02-02 (for ticks)
     public static double kI = 0.0;      // Keep at 0
-    public static double kD = 0.0000185;// Tuned 2026-02-02
+    public static double kD = 0.00003;// Tuned 2026-02-02
     public static double kF = 0.058;    // Static friction compensation, direction-aware
     
     // Position control parameters
-    public static double positionTolerance = 2.0;  // Degrees, within this = at setpoint
+    public static double positionTolerance = 5.0;   // Degrees, within this = at setpoint
     public static double maxOutputPower = 1.0;       // Maximum output from PID
     public static double minOutputPower = 0.0;       // Minimum output
     

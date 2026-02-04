@@ -42,7 +42,7 @@ public class Robot {
         
         // ==================== ENABLE/DISABLE SUBSYSTEMS ====================
         // Set to true to enable, false to disable (if hardware not present)
-        boolean ENABLE_VISION = false;   // Requires Limelight3A
+        boolean ENABLE_VISION = true;    // Requires Limelight3A
         boolean ENABLE_TURRET = true;    // Requires turret motor + encoder
         
         // Vision (Limelight)

@@ -58,9 +58,9 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     
     // Auto-aim PID constants (tunable via Dashboard)
     // Distance-adaptive: actual kP = kP_alignH * (1 - distanceFactor * kP_distanceScale)
-    public static double kP_alignH = 0.025;      // Base P gain for auto-aim
+    public static double kP_alignH = 0.02;       // Base P gain for auto-aim
     public static double kI_alignH = 0;          // I gain for auto-aim
-    public static double kD_alignH = 0.008;      // D gain for auto-aim (damping)
+    public static double kD_alignH = 0.0095;     // D gain for auto-aim (damping)
     public static double kP_near = 0.012;        // P gain at close range (weaker to prevent overshoot)
     public static double kP_far = 0.03;          // P gain at far range (stronger for precision)
     
@@ -73,10 +73,17 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     public static double farDistanceThreshold = 94;    // Distance threshold for offset (inches)
     public static double farOffsetDegrees = 2.0;       // Offset in degrees for far shots
     
-    // Low-pass filter for tx smoothing (reduces jitter from Limelight noise)
-    public static double txFilterAlpha = 0.3;          // Filter coefficient (0-1, lower = smoother)
+    // Low-pass filter for tx smoothing (reduces jitter from turret shake + Limelight noise)
+    public static double txFilterAlpha = 0.12;         // Filter coefficient (0-1, lower = smoother)
     private double filteredTx = 0;
     private boolean txFilterInitialized = false;
+    
+    // TX lock: ignore new tx values for a period after auto-aim starts
+    // This prevents turret shake from affecting the initial aim direction
+    public static long txLockDurationMs = 400;         // Lock tx for 0.4 seconds after auto-aim starts
+    private double lockedTx = 0;
+    private long txLockStartTime = 0;
+    private boolean txLocked = false;
     
     // Current deadband (set based on distance)
     private double currentDeadband = alignDeadbandNear;
@@ -800,7 +807,24 @@ public class MecanumDrivePinpoint extends SubsystemBase {
                 // filteredTx = alpha * rawTx + (1-alpha) * filteredTx
                 filteredTx = txFilterAlpha * rawTx + (1 - txFilterAlpha) * filteredTx;
             }
-            double tx = filteredTx;
+            
+            // ========== TX LOCK ==========
+            // Lock tx value for txLockDurationMs after auto-aim starts
+            // This prevents turret shake from affecting initial aim direction
+            long timeSinceStart = System.currentTimeMillis() - txLockStartTime;
+            double tx;
+            if (timeSinceStart < txLockDurationMs) {
+                // Within lock period
+                if (!txLocked) {
+                    // First read: capture and lock the tx value
+                    lockedTx = filteredTx;
+                    txLocked = true;
+                }
+                tx = lockedTx;  // Use locked value
+            } else {
+                // Lock period expired: use live filtered tx
+                tx = filteredTx;
+            }
             
             // ========== DISTANCE-BASED PARAMETERS ==========
             // Lock offset and deadband once determined
@@ -923,6 +947,11 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         headingTargetLocked = false;
         lockedTargetGoalX = 0;
         lockedTargetGoalY = 0;
+        
+        // Start TX lock: will capture tx on first read and lock for txLockDurationMs
+        txLocked = false;  // Will be set to true on first tx read
+        txLockStartTime = System.currentTimeMillis();
+        lockedTx = 0;
         
         alignPID.reset();
     }

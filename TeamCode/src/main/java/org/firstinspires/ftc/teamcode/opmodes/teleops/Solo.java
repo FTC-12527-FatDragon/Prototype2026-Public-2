@@ -132,10 +132,10 @@ public class Solo extends CommandOpMode {
             
             if (dpadLeft) {
                 robot.turret.releaseHold();   // Allow manual control
-                robot.turret.setPower(0.5);   // Left (angle decreases)
+                robot.turret.setPower(1.0);   // Left (angle decreases)
             } else if (dpadRight) {
                 robot.turret.releaseHold();   // Allow manual control
-                robot.turret.setPower(-0.5);  // Right (angle increases)
+                robot.turret.setPower(-1.0);  // Right (angle increases)
             } else {
                 // No D-pad input: actively hold current position with PID
                 if (!robot.turret.isHoldingPosition()) {

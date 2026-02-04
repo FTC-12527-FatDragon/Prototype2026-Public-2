@@ -13,40 +13,43 @@ public class ShooterConstants {
     public static String shooterServoName = "shooterServo";
 
     // Velocity tolerance (TPS) - Used to check if shooter is at target speed
-    // Increased from 20 to 100 for more reliable firing
-    public static double shooterEpsilon = 100;
+    // For external encoder (8192 CPR), tuned value
+    public static double shooterEpsilon = 10000;
 
-    // ==================== PIDF VELOCITY CONTROL (for true closed-loop) ====================
-    // Currently unused - using Pseudo Closed-loop with feedforward instead
-    // Uncomment in Shooter.java to enable PIDF control
-    public static double kP = 0.0005;   // Start small for velocity control
-    public static double kI = 0.0;      // Usually keep at 0
-    public static double kD = 0.0;      // Add if oscillating
-    public static double kF = 0.0004;   // Feedforward: kF * targetVelocity added to output
-    // Note: For velocity control, kF ≈ 1/maxVelocityTPS ≈ 1/2800 ≈ 0.00036
-
-    // Theoretical Max TPS for Feedforward Calculation
-    // GoBilda 6000RPM Motor (5203-2402-0001): 28 ticks/revolution
-    // Max TPS = (6000 / 60) * 28 = 2800 TPS
-    public static double maxVelocityTPS = 2800.0;
+    // ==================== PIDF VELOCITY CONTROL (External Encoder) ====================
+    // Tuned for REV Through Bore Encoder V2 (8192 CPR) on rightShooterMotor
+    // Using 50ms window velocity calculation for stability
+    public static double kP = 0.0001;     // Tuned
+    public static double kI = 0.0;        // Keep at 0
+    public static double kD = 0.0000001;  // Tuned
+    public static double kF = 0.000002;   // Tuned feedforward
+    public static double filterAlpha = 0.15;  // Velocity smoothing (lower = smoother)
     
-    // ==================== MOTOR BRAKING (Pseudo Closed-loop) ====================
+    // Theoretical Max TPS for External Encoder
+    // REV Through Bore V2: 8192 CPR, GoBilda 6000RPM Motor
+    // Max TPS = (6000 / 60) * 8192 ≈ 819,200 TPS
+    public static double maxVelocityTPS = 819200.0;
+    
+    // ==================== MOTOR BRAKING (Hybrid Control) ====================
     // When overspeed exceeds threshold, reverse motor to brake (no physical brake)
-    public static double motorBrakeThreshold = 100;  // TPS - if overspeed > this, apply motor brake
-    public static double motorBrakePower = 0.5;      // Reverse power for braking (0-1, tune as needed)
+    // Scaled for external encoder (8192 CPR)
+    public static double motorBrakeThreshold = 30000;  // TPS - if overspeed > this, apply motor brake
+    public static double motorBrakePower = 0.5;        // Reverse power for braking (0-1, tune as needed)
+    public static double pidSwitchThreshold = 90000;   // Switch to PID when within this of target (~300 * 292)
 
     /**
      * Target Velocities (in Ticks Per Second)
-     * Positive values - matches original Prototype2026-Public design.
+     * Values scaled for REV Through Bore V2 (8192 CPR) external encoder
+     * Conversion: old_value * (8192/28) ≈ old_value * 292.57
      */
     // Idle power (open-loop, no PID control)
     public static double idlePower = 0.27;
     
-    public static double stopVelocity = 600;   // Legacy, used for reference only
-    public static double fastVelocity = 2100;  // Far shots (~69% power)
-    public static double midVelocity = 1500;   // Mid-range shots (~46% power)
-    public static double slowVelocity = 950;   // Close shots (~34% power)
-    public static double releaseVelocity = 200; // Threshold to consider "stopped" or "too slow"
+    public static double stopVelocity = 175000;   // ~600 * 292 (idle reference)
+    public static double fastVelocity = 600000;   // Far shots (远射)
+    public static double midVelocity = 350000;    // Mid-range shots (中射)
+    public static double slowVelocity = 200000;   // Close shots (近射)
+    public static double releaseVelocity = 60000; // Threshold to consider "stopped"
     
     // Velocity tolerances for transit engagement (ticks per second)
     // Defines the acceptable range around the target velocity.

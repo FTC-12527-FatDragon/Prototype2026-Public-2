@@ -26,6 +26,12 @@ public class TeleOpDriveCommand extends CommandBase {
     
     // Trigger threshold for shoot buttons
     private static final double TRIGGER_THRESHOLD = 0.3;
+    
+    // Auto-aim state (single press trigger)
+    private boolean autoAimActive = false;      // Is auto-aim currently running?
+    private boolean lastAPressed = false;       // A button state last frame (for edge detection)
+    private long autoAimStartTime = 0;          // When auto-aim started (for timeout)
+    private static final long AUTO_AIM_TIMEOUT_MS = 400;  // Auto-aim timeout: 1.5 seconds
 
     public TeleOpDriveCommand(MecanumDrivePinpoint drive, Vision vision, Turret turret,
                               GamepadEx gamepadEx, boolean[] isAuto) {
@@ -85,9 +91,34 @@ public class TeleOpDriveCommand extends CommandBase {
             // Check button states
             boolean aPressed = gamepadEx.getButton(GamepadKeys.Button.A);
             
-            // Auto-aim trigger: A button ONLY
-            // Shoot buttons do NOT trigger chassis auto-aim
-            boolean shouldAlign = aPressed;
+            // Auto-aim: toggle on A press
+            // First press: start auto-aim
+            // Second press: cancel auto-aim
+            if (aPressed && !lastAPressed) {
+                if (autoAimActive) {
+                    // Already aiming, cancel it
+                    autoAimActive = false;
+                } else {
+                    // Start aiming
+                    autoAimActive = true;
+                    autoAimStartTime = System.currentTimeMillis();
+                    drive.resetAutoAimOffset();  // Reset offset lock for fresh aim
+                }
+            }
+            lastAPressed = aPressed;
+            
+            // Stop auto-aim when:
+            // 1. Aligned to target
+            // 2. User has ANY right stick input (manual override)
+            // 3. Timeout (prevent endless hunting)
+            boolean manualTurnOverride = Math.abs(rawRightX) > 0.1;
+            boolean timeout = (System.currentTimeMillis() - autoAimStartTime) > AUTO_AIM_TIMEOUT_MS;
+            if (autoAimActive && (drive.isAligned() || manualTurnOverride || timeout)) {
+                autoAimActive = false;
+            }
+            
+            // Use auto-aim state instead of button hold
+            boolean shouldAlign = autoAimActive;
             
             // Check for input
             boolean hasInput = Math.abs(rawLeftX) > DriveConstants.deadband || 
@@ -106,10 +137,10 @@ public class TeleOpDriveCommand extends CommandBase {
                 double turn;
                 
                 // Check if chassis auto-aim should be used
-                // SOFT LOCK or no turret: chassis auto-aim
+                // SOFT LOCK or MANUAL or no turret: chassis auto-aim
                 // HARD LOCK: turret handles aiming, chassis manual only
                 boolean useChassisAutoAim = shouldAlign && 
-                    (turret == null || turret.getLockMode() == Turret.LockMode.SOFT_LOCK);
+                    (turret == null || turret.getLockMode() != Turret.LockMode.HARD_LOCK);
                 
                 if (useChassisAutoAim && vision != null) {
                     // SOFT LOCK MODE: Chassis auto-aim using tx from Limelight
@@ -132,3 +163,4 @@ public class TeleOpDriveCommand extends CommandBase {
 }
 
 // Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.
+
