@@ -1,7 +1,9 @@
 package org.firstinspires.ftc.teamcode.opmodes.autos;
 
 import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.canvas.Canvas;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.arcrobotics.ftclib.command.Command;
 import com.arcrobotics.ftclib.command.CommandScheduler;
 import com.pedropathing.follower.Follower;
@@ -27,6 +29,13 @@ public abstract class AutoCommandBase extends LinearOpMode {
     protected Follower follower;
     // protected Vision vision;  // DISABLED: Vision not used in auto currently
     protected Turret turret;
+    
+    // Dashboard for drawing robot position
+    protected FtcDashboard dashboard;
+    
+    // Robot dimensions (inches) for drawing
+    private static final double ROBOT_WIDTH = 14.187;
+    private static final double ROBOT_LENGTH = 15.748;
 
     /**
      * Abstract method to define the autonomous command sequence.
@@ -44,8 +53,11 @@ public abstract class AutoCommandBase extends LinearOpMode {
      * Initializes subsystems and telemetry.
      */
     private void initialize() {
+        // Setup Dashboard for drawing
+        dashboard = FtcDashboard.getInstance();
+        
         // Setup MultipleTelemetry to display on both Driver Station and Dashboard
-        telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
+        telemetry = new MultipleTelemetry(telemetry, dashboard.getTelemetry());
 
         // Initialize Follower with hardware map
         follower = Constants.createFollower(hardwareMap);
@@ -119,6 +131,9 @@ public abstract class AutoCommandBase extends LinearOpMode {
             telemetry.addData("Heading (deg)", String.format("%.1f", Math.toDegrees(currentPose.getHeading())));
             telemetry.addData("Path Active", follower.isBusy());
             telemetry.update();
+            
+            // Draw robot on Dashboard
+            drawRobotOnDashboard(currentPose);
         }
 
         onAutoStopped();
@@ -138,6 +153,41 @@ public abstract class AutoCommandBase extends LinearOpMode {
         
         // Return turret to 0
         turret.enableSoftLock(0);
+    }
+    
+    /**
+     * Draws the robot position and heading on FTC Dashboard Field view.
+     * Dashboard Field uses center-origin coordinates (-72 to 72 inches).
+     * Our pose uses corner-origin coordinates (0 to 144 inches).
+     */
+    private void drawRobotOnDashboard(Pose pose) {
+        TelemetryPacket packet = new TelemetryPacket();
+        Canvas canvas = packet.fieldOverlay();
+        
+        // Convert from corner-origin (0-144) to center-origin (-72 to 72)
+        double x = pose.getX() - 72;
+        double y = pose.getY() - 72;
+        double heading = pose.getHeading();
+        
+        // Draw robot as a circle with direction indicator
+        canvas.setStroke("#00FF00");  // Green
+        canvas.setStrokeWidth(1);
+        canvas.strokeCircle(x, y, ROBOT_WIDTH / 2);
+        
+        // Draw heading direction line (front of robot)
+        canvas.setStroke("#FF0000");  // Red
+        canvas.setStrokeWidth(2);
+        double arrowLength = ROBOT_LENGTH * 0.7;
+        double arrowX = x + arrowLength * Math.cos(heading);
+        double arrowY = y + arrowLength * Math.sin(heading);
+        canvas.strokeLine(x, y, arrowX, arrowY);
+        
+        // Add telemetry data
+        packet.put("X (in)", String.format("%.2f", pose.getX()));
+        packet.put("Y (in)", String.format("%.2f", pose.getY()));
+        packet.put("Heading (deg)", String.format("%.1f", Math.toDegrees(heading)));
+        
+        dashboard.sendTelemetryPacket(packet);
     }
 }
 

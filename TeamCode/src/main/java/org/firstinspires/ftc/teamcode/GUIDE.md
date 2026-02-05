@@ -1,7 +1,7 @@
 # Prototype2026-Public-2 Operation Guide | 操作指南
 
 > **Bilingual Technical Documentation | 中英双语技术文档**  
-> FTC Team 12527 | Last Updated: 2026-02-03 (Complete Documentation Update)
+> FTC Team 12527 | Last Updated: 2026-02-04 (Shooter Optimization & Auto-Aim Fixes)
 
 ---
 
@@ -187,27 +187,39 @@ public enum ShooterState {
 
 #### Control Algorithm | 控制算法
 
-**Pseudo Closed-loop with Feedforward + Motor Braking** (not PID):
+**Pseudo Closed-loop with Feedforward + Motor Braking + Firing Boost** (not PID):
 
-**伪闭环前馈控制 + 电机刹车**（不是PID）：
+**伪闭环前馈控制 + 电机刹车 + 发射增益**（不是PID）：
 
 ```java
-if (currentVel < targetVel) {
-    power = 1.0;  // Too slow → max power | 太慢 → 满功率
-} else if (currentVel > targetVel + 100) {
-    power = -0.5;  // Too fast > 100 TPS → motor brake | 太快超100 → 电机刹车
+double deadband = 15000;  // Stability zone
+double feedforward = (targetVel / maxVelocityTPS) * 1.3;  // Corrected
+
+if (error > 50000) {
+    power = 1.0;  // Far from target: full power
+} else if (error > deadband) {
+    power = isMidMode ? 0.7 : 0.85;  // Approach power
+} else if (error < -overspeedThreshold) {
+    power = isMidMode ? -0.3 : -0.5;  // Motor brake
 } else {
-    power = targetVel / maxVelocityTPS;  // Near target → feedforward | 接近目标 → 前馈
+    power = feedforward;  // Maintain
+}
+
+// Firing boost: +8% power 0.5s after transit opens
+if (boostActive) {
+    power = lockedPower + 0.08;  // Bypass pseudo closed-loop
 }
 ```
 
 | State | Condition | Power |
 |-------|-----------|-------|
-| Too slow | `vel < target` | 1.0 (accelerate) |
-| Too fast > 100 TPS | `vel > target + 100` | **-0.5** (motor brake) |
-| Near target | otherwise | feedforward |
+| Far from target | `error > 50000` | 1.0 (full) |
+| Approaching | `error > 15000` | 0.85 (SLOW/FAST) / 0.70 (MID) |
+| Overspeed | `error < -30000` | -0.5 (SLOW/FAST) / -0.3 (MID) |
+| Near target | otherwise | feedforward (×1.3 corrected) |
+| **Firing boost** | 0.5s after fire | locked + 8% |
 
-> **Updated 2026-02-03**: Brake threshold changed from 200 to **100** TPS, brake power from 0.3 to **0.5**
+> **Updated 2026-02-04**: Added deadband, feedforward correction, mode-specific params, firing boost
 
 Why not PID? Flywheel momentum makes PID oscillate. Pseudo Closed-loop converges faster.
 

@@ -19,6 +19,15 @@ public class TransitCommand extends CommandBase {
     }
 
     /**
+     * Called when the command is first scheduled.
+     * Marks that transit firing is active.
+     */
+    @Override
+    public void initialize() {
+        shooter.setTransitFiring(true);
+    }
+
+    /**
      * Called repeatedly while the command is scheduled (usually while Trigger is held).
      * Sets transit to UP when shooter reaches target velocity.
      */
@@ -39,13 +48,14 @@ public class TransitCommand extends CommandBase {
 
     /**
      * Called when the command ends (Trigger released).
-     * Resets transit servo to DOWN.
+     * Resets transit servo to DOWN and marks firing as inactive.
      *
      * @param interrupted whether the command was interrupted/canceled
      */
     @Override
     public void end(boolean interrupted) {
         transit.setTransitState(Transit.TransitState.DOWN);
+        shooter.setTransitFiring(false);
     }
 }
 

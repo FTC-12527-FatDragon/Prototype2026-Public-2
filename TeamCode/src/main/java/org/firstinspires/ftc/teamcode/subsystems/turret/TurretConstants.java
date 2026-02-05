@@ -35,13 +35,15 @@ public class TurretConstants {
     
     // Angle limits (degrees, 0 = forward)
     // Positive = clockwise (right), Negative = counterclockwise (left)
-    // Total range ~190° (no slip ring, wires will tangle if exceeded)
-    public static double minAngleDeg = -95.0;   // Minimum angle (left limit)
-    public static double maxAngleDeg = 95.0;    // Maximum angle (right limit)
+    // Physical limits: +23000 ticks (right), -22000 ticks (left)
+    // At ~120 ticks/degree: +192°, -183°
+    public static double minAngleDeg = -180.0;   // Minimum angle (left limit)
+    public static double maxAngleDeg = 190.0;    // Maximum angle (right limit)
     
     // Unwind threshold: if target is beyond this angle, turret will return to 0°
     // This prevents the turret from "chasing" targets behind the robot
-    public static double unwindThreshold = 100.0;  // degrees - if |targetAngle| > this, unwind to 0°
+    // Set slightly below physical limits to allow safe unwind
+    public static double unwindThreshold = 170.0;  // degrees - if |targetAngle| > this, unwind to 0°
     
     // ==================== GEOMETRY (Limelight on turret) ====================
     // Turret center is behind chassis center
@@ -49,15 +51,24 @@ public class TurretConstants {
     // Limelight distance from turret center
     public static double limelightOffsetMM = 140.86521;   // mm, limelight from turret center
     
-    // ==================== POSITION PID ====================
-    // PID constants for position control (in TICKS!)
+    // ==================== POSITION PID (for TICKS - MANUAL mode) ====================
+    // PID constants for position control in TICKS
     // Tuned via TurretMotorTuner on 2026-02-02
-    // Note: SOFT_LOCK uses degrees, MANUAL holdingPosition uses ticks
+    // Used by MANUAL mode holdingPosition
     // IMPORTANT: Motor direction is REVERSED (reverseMotor = true)
     public static double kP = 0.0003;   // Tuned 2026-02-02 (for ticks)
     public static double kI = 0.0;      // Keep at 0
-    public static double kD = 0.00003;// Tuned 2026-02-02
+    public static double kD = 0.00003;  // Tuned 2026-02-02
     public static double kF = 0.058;    // Static friction compensation, direction-aware
+    
+    // ==================== POSITION PID (for DEGREES - SOFT_LOCK/HARD_LOCK) ====================
+    // PID constants for angle-based control (in DEGREES)
+    // Used by SOFT_LOCK and HARD_LOCK modes
+    // Approximately kP_ticks * 120 (ticksPerDegree)
+    public static double kP_deg = 0.035;   // P for degrees (~0.0003 * 120)
+    public static double kI_deg = 0.0;     // I for degrees
+    public static double kD_deg = 0.004;   // D for degrees (~0.00003 * 120)
+    public static double kF_deg = 0.06;    // F for degrees (static friction)
     
     // Position control parameters
     public static double positionTolerance = 5.0;   // Degrees, within this = at setpoint

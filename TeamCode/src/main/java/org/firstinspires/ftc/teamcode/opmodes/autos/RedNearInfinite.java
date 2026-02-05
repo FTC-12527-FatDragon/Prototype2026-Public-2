@@ -30,7 +30,7 @@ public class RedNearInfinite extends AutoCommandBase {
     private PathChain pathRN5, pathRN6, pathRN7, pathRN8, pathRN9;
     
     // Key positions (Red side - mirrored at x=72)
-    private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(90));
+    private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(36.5));
     private static final Pose SHOOT_POSE = new Pose(98.80, 101.15, Math.toRadians(0));
     
     private static final Pose SAMPLE1_POSE = new Pose(135.21, 59.30, Math.toRadians(0));

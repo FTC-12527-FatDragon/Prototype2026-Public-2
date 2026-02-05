@@ -167,16 +167,17 @@ public class Intake extends SubsystemBase {
             double targetPower;
 
             // Priority: fastShooting > fullPower > standard
+            // Note: negative power = intake direction (sucking in)
             if (isShooting) {
-                targetPower = - IntakeConstants.transitPower; //1
-            } else if (isFastIntaking){
-                targetPower = - IntakeConstants.fastIntakePower; // 0.7
+                targetPower = -IntakeConstants.transitPower; // 1.0
+            } else if (isFastIntaking) {
+                targetPower = -IntakeConstants.fastIntakePower; // 1.0
             } else if (isFastShooting) {
-                targetPower = - IntakeConstants.fastShootingPower; // 0.8
+                targetPower = -IntakeConstants.fastShootingPower; // 0.8
             } else if (isFullPower) {
-                targetPower = IntakeConstants.fullPower; // 0.65
+                targetPower = -IntakeConstants.fullPower; // 0.65 (auto mode)
             } else {
-                targetPower = - IntakeConstants.intakePower; // 0.5
+                targetPower = -IntakeConstants.intakePower; // 0.6
             }
 
             // Reverse logic

@@ -30,7 +30,7 @@ public class RedNearAuto2 extends AutoCommandBase {
     
     // Key positions (Red side - mirrored at x=72)
     // Mirror formula: new_x = 144 - old_x, heading 180° → 0°
-    private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(90));     // 144 - 25.68
+    private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(36.5));   // 144 - 25.68, mirrored angle
     private static final Pose SHOOT_POSE = new Pose(98.80, 101.15, Math.toRadians(0));       // 144 - 45.20
     
     // New path positions (mirrored)

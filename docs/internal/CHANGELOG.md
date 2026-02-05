@@ -4,6 +4,52 @@ All notable changes to the Prototype2026-Public-2 project will be documented in 
 
 ---
 
+## [2026-02-04] - Shooter Pseudo Closed-loop Optimization & Auto-Aim Fixes
+
+### Changed
+- **Shooter Pseudo Closed-loop** (`Shooter.java`) - Major optimization:
+    - Added **deadband** (±15000 TPS) for stability zone
+    - Added **feedforward correction** (×1.3) to compensate motor efficiency loss
+    - Added **mode-specific parameters**:
+        - MID mode: approach power 0.7, brake power -0.3 (gentler)
+        - SLOW/FAST: approach power 0.85, brake power -0.5
+    - New logic: `error > 50000 → 1.0`, `error > 15000 → approach`, `else → feedforward`
+
+- **Firing Boost** (`Shooter.java`) - New feature:
+    - 0.5 seconds after transit opens, add +8% power boost
+    - Locked power mode: bypasses pseudo closed-loop during boost
+    - Compensates for velocity drop when ball exits
+    - Resets on state change or STOP
+
+- **Chassis Auto-Aim PID** (`MecanumDrivePinpoint.java`):
+    - Fixed PID output direction (negated)
+    - Fixed `getHeading()` method (was missing)
+
+- **Near Auto Starting Angles** (all Near auto files):
+    - BlueNearAuto: 90° → **143.5°**
+    - BlueNearInfinite: 90° → **143.5°**
+    - RedNearAuto: 90° → **36.5°** (mirrored)
+    - RedNearAuto2: 90° → **36.5°** (mirrored)
+    - RedNearInfinite: 90° → **36.5°** (mirrored)
+
+### Added
+- **Auto Dashboard Visualization** (`AutoCommandBase.java`):
+    - Robot position displayed on FTC Dashboard Field view
+    - Green circle + red heading arrow
+    - Coordinates converted from corner-origin (0-144) to center-origin (-72 to 72)
+
+- **ShooterAutoTuner** - Extended test durations:
+    - Feedforward test: 12s → **60s** (1 minute)
+    - Step Response: 5s → **30s**
+    - Verification: 6s → **30s**
+    - Steady state analysis uses last 5 seconds of data
+
+### Fixed
+- **Shooter `isShooterAtSetPoint()`** - Added 0.3s stability requirement before allowing fire
+- **Shooter state tracking** - Added `lastShooterState` for boost reset on mode change
+
+---
+
 ## [2026-02-03] - ChassisAlignTuner PID Tuned
 
 ### Fixed

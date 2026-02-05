@@ -27,11 +27,15 @@ public class TeleOpDriveCommand extends CommandBase {
     // Trigger threshold for shoot buttons
     private static final double TRIGGER_THRESHOLD = 0.3;
     
-    // Auto-aim state (single press trigger)
+    // Auto-aim state (one-shot heading control)
     private boolean autoAimActive = false;      // Is auto-aim currently running?
     private boolean lastAPressed = false;       // A button state last frame (for edge detection)
     private long autoAimStartTime = 0;          // When auto-aim started (for timeout)
-    private static final long AUTO_AIM_TIMEOUT_MS = 400;  // Auto-aim timeout: 1.5 seconds
+    private static final long AUTO_AIM_TIMEOUT_MS = 2000;  // Auto-aim timeout: 2 seconds
+    
+    // One-shot heading target (read TX once, then turn to that heading)
+    private double targetHeadingRad = 0;        // Target heading to turn to
+    private boolean headingCaptured = false;    // Has target heading been captured?
 
     public TeleOpDriveCommand(MecanumDrivePinpoint drive, Vision vision, Turret turret,
                               GamepadEx gamepadEx, boolean[] isAuto) {
@@ -91,34 +95,50 @@ public class TeleOpDriveCommand extends CommandBase {
             // Check button states
             boolean aPressed = gamepadEx.getButton(GamepadKeys.Button.A);
             
-            // Auto-aim: toggle on A press
-            // First press: start auto-aim
-            // Second press: cancel auto-aim
+            // Auto-aim: ONE-SHOT heading control
+            // Press A: Read TX once, calculate target heading, then turn to it
             if (aPressed && !lastAPressed) {
                 if (autoAimActive) {
                     // Already aiming, cancel it
                     autoAimActive = false;
+                    headingCaptured = false;
                 } else {
-                    // Start aiming
+                    // Start aiming - capture target heading from TX
                     autoAimActive = true;
+                    headingCaptured = false;
                     autoAimStartTime = System.currentTimeMillis();
-                    drive.resetAutoAimOffset();  // Reset offset lock for fresh aim
+                    
+                    // Capture TX and calculate target heading
+                    if (vision != null) {
+                        int tagId = vision.getDetectedTagId();
+                        boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
+                        if (isGoalTag) {
+                            double tx = vision.getTx();  // Degrees
+                            double currentHeading = drive.getHeading();  // Radians
+                            // Target = current heading - TX (TX positive = target is to the right)
+                            targetHeadingRad = currentHeading - Math.toRadians(tx);
+                            headingCaptured = true;
+                        }
+                    }
                 }
             }
             lastAPressed = aPressed;
             
             // Stop auto-aim when:
-            // 1. Aligned to target
+            // 1. Reached target heading
             // 2. User has ANY right stick input (manual override)
-            // 3. Timeout (prevent endless hunting)
+            // 3. Timeout
+            // 4. No heading captured (no tag visible when pressed)
             boolean manualTurnOverride = Math.abs(rawRightX) > 0.1;
             boolean timeout = (System.currentTimeMillis() - autoAimStartTime) > AUTO_AIM_TIMEOUT_MS;
-            if (autoAimActive && (drive.isAligned() || manualTurnOverride || timeout)) {
+            boolean reachedTarget = headingCaptured && drive.isAtTargetHeading(targetHeadingRad);
+            if (autoAimActive && (reachedTarget || manualTurnOverride || timeout || !headingCaptured)) {
                 autoAimActive = false;
+                headingCaptured = false;
             }
             
-            // Use auto-aim state instead of button hold
-            boolean shouldAlign = autoAimActive;
+            // Use auto-aim state
+            boolean shouldAlign = autoAimActive && headingCaptured;
             
             // Check for input
             boolean hasInput = Math.abs(rawLeftX) > DriveConstants.deadband || 
@@ -142,9 +162,9 @@ public class TeleOpDriveCommand extends CommandBase {
                 boolean useChassisAutoAim = shouldAlign && 
                     (turret == null || turret.getLockMode() != Turret.LockMode.HARD_LOCK);
                 
-                if (useChassisAutoAim && vision != null) {
-                    // SOFT LOCK MODE: Chassis auto-aim using tx from Limelight
-                    turn = drive.getAlignTurnPower(vision);
+                if (useChassisAutoAim && headingCaptured) {
+                    // ONE-SHOT MODE: Turn to captured target heading (not tracking TX)
+                    turn = drive.getTurnPowerToHeading(targetHeadingRad);
                 } else {
                     // HARD LOCK or MANUAL MODE: Manual turn control
                     turn = rawRightX * Math.abs(rawRightX);

@@ -13,16 +13,17 @@ public class ShooterConstants {
     public static String shooterServoName = "shooterServo";
 
     // Velocity tolerance (TPS) - Used to check if shooter is at target speed
-    // For external encoder (8192 CPR), tuned value
-    public static double shooterEpsilon = 10000;
+    // For external encoder (8192 CPR)
+    public static double shooterEpsilon = 25000;
 
     // ==================== PIDF VELOCITY CONTROL (External Encoder) ====================
     // Tuned for REV Through Bore Encoder V2 (8192 CPR) on rightShooterMotor
     // Using 50ms window velocity calculation for stability
-    public static double kP = 0.0001;     // Tuned
+    // Auto-tuned values from ShooterAutoTuner
+    public static double kP = 0.000015;   // Auto-tuned
     public static double kI = 0.0;        // Keep at 0
-    public static double kD = 0.0000001;  // Tuned
-    public static double kF = 0.000002;   // Tuned feedforward
+    public static double kD = 0.0;        // Auto-tuned
+    public static double kF = 0.00000028; // Auto-tuned feedforward
     public static double filterAlpha = 0.15;  // Velocity smoothing (lower = smoother)
     
     // Theoretical Max TPS for External Encoder
@@ -46,9 +47,9 @@ public class ShooterConstants {
     public static double idlePower = 0.27;
     
     public static double stopVelocity = 175000;   // ~600 * 292 (idle reference)
-    public static double fastVelocity = 600000;   // Far shots (远射)
-    public static double midVelocity = 350000;    // Mid-range shots (中射)
-    public static double slowVelocity = 200000;   // Close shots (近射)
+    public static double fastVelocity = 410000;   // Far shots (远射)
+    public static double midVelocity = 270000;    // Mid-range shots (中射)
+    public static double slowVelocity = 230000;   // Close shots (近射)
     public static double releaseVelocity = 60000; // Threshold to consider "stopped"
     
     // Velocity tolerances for transit engagement (ticks per second)

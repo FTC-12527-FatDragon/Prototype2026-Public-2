@@ -27,7 +27,7 @@ import org.firstinspires.ftc.teamcode.subsystems.drive.Constants;
  * Path Tuner OpMode
  * Allows dynamic path testing via Panels Dashboard.
  * Supports both BezierLine and BezierCurve.
- *
+ * 
  * Instructions:
  * 1. Open Panels Dashboard (192.168.43.1:8001).
  * 2. Edit start/end/control point values in the Configuration sidebar.
@@ -217,8 +217,8 @@ public class PathTunerOpMode extends OpMode {
                                 new Pose(ctrl3X, ctrl3Y, 0),
                                 endPose
                         ))
-                        .setLinearHeadingInterpolation(startPose.getHeading(), endPose.getHeading())
-                        .build();
+                .setLinearHeadingInterpolation(startPose.getHeading(), endPose.getHeading())
+                .build();
                 break;
         }
 

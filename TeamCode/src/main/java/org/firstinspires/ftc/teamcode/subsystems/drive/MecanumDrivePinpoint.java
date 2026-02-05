@@ -58,9 +58,9 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     
     // Auto-aim PID constants (tunable via Dashboard)
     // Distance-adaptive: actual kP = kP_alignH * (1 - distanceFactor * kP_distanceScale)
-    public static double kP_alignH = 0.02;       // Base P gain for auto-aim
+    public static double kP_alignH = 0.03;       // Base P gain for auto-aim (from ChassisAlignTuner)
     public static double kI_alignH = 0;          // I gain for auto-aim
-    public static double kD_alignH = 0.0095;     // D gain for auto-aim (damping)
+    public static double kD_alignH = 0.003;      // D gain for auto-aim (from ChassisAlignTuner)
     public static double kP_near = 0.012;        // P gain at close range (weaker to prevent overshoot)
     public static double kP_far = 0.03;          // P gain at far range (stronger for precision)
     
@@ -593,6 +593,14 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     }
     
     /**
+     * Gets the current robot heading in radians.
+     * This is the raw heading from pinpoint minus any yaw offset.
+     */
+    public double getHeading() {
+        return pinpoint.getHeading(AngleUnit.RADIANS) - yawOffset;
+    }
+    
+    /**
      * Checks if we have a valid absolute position.
      */
     public boolean hasAbsolutePosition() {
@@ -954,6 +962,58 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         lockedTx = 0;
         
         alignPID.reset();
+    }
+    
+    // ==================== ONE-SHOT HEADING CONTROL ====================
+    // New approach: read TX once, calculate target heading, then turn to it
+    
+    // Tolerance for heading alignment (degrees)
+    public static double headingToleranceDeg = 2.0;
+    
+    /**
+     * Calculates turn power to reach a target heading.
+     * Uses PID control based on heading error (not TX tracking).
+     * 
+     * @param targetHeadingRad Target heading in radians
+     * @return Turn power (-1 to 1)
+     */
+    public double getTurnPowerToHeading(double targetHeadingRad) {
+        double currentHeading = getHeading();  // Radians
+        double errorRad = normalizeAngle(targetHeadingRad - currentHeading);
+        double errorDeg = Math.toDegrees(errorRad);
+        
+        // Use the same PID parameters as before
+        alignPID.setPID(kP_alignH, kI_alignH, kD_alignH);
+        
+        // PID control: drive error to 0 (negated for correct turn direction)
+        double turn = -alignPID.calculate(0, errorDeg);
+        
+        // Update aligned state based on heading error
+        isAligned = Math.abs(errorDeg) < headingToleranceDeg;
+        
+        return Math.max(-1, Math.min(1, turn));
+    }
+    
+    /**
+     * Checks if robot has reached target heading.
+     * 
+     * @param targetHeadingRad Target heading in radians
+     * @return true if within tolerance
+     */
+    public boolean isAtTargetHeading(double targetHeadingRad) {
+        double currentHeading = getHeading();
+        double errorRad = normalizeAngle(targetHeadingRad - currentHeading);
+        double errorDeg = Math.toDegrees(errorRad);
+        return Math.abs(errorDeg) < headingToleranceDeg;
+    }
+    
+    /**
+     * Normalizes an angle to [-PI, PI] range.
+     */
+    private double normalizeAngle(double angle) {
+        while (angle > Math.PI) angle -= 2 * Math.PI;
+        while (angle < -Math.PI) angle += 2 * Math.PI;
+        return angle;
     }
 
     @Override

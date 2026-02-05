@@ -715,7 +715,8 @@ public class Turret extends SubsystemBase {
      * @return True if TX tracking is active.
      */
     public boolean isTxTrackingActive() {
-        return hasValidTx && (currentDetectedTagId == targetTagId) && !isUnwinding;
+        // TX tracking only when seeing tag 24 (red goal)
+        return hasValidTx && (currentDetectedTagId == 24) && !isUnwinding;
     }
     
     /**
@@ -816,7 +817,24 @@ public class Turret extends SubsystemBase {
         while (turretAngleRad > Math.PI) turretAngleRad -= 2 * Math.PI;
         while (turretAngleRad < -Math.PI) turretAngleRad += 2 * Math.PI;
         
-        return Math.toDegrees(turretAngleRad);
+        double targetAngle = Math.toDegrees(turretAngleRad);
+        // targetAngle is now in [-180, +180]
+        
+        // ===== CHECK IF TARGET IS WITHIN PHYSICAL LIMITS =====
+        // Physical limits: minAngleDeg to maxAngleDeg (e.g., -180 to +190)
+        if (targetAngle >= TurretConstants.minAngleDeg && 
+            targetAngle <= TurretConstants.maxAngleDeg) {
+            // Target is directly reachable
+            return targetAngle;
+        }
+        
+        // Target is outside limits - need to clamp
+        // This shouldn't happen often since limits are close to ±180
+        if (targetAngle < TurretConstants.minAngleDeg) {
+            return TurretConstants.minAngleDeg;
+        } else {
+            return TurretConstants.maxAngleDeg;
+        }
     }
 
     /**
@@ -959,16 +977,45 @@ public class Turret extends SubsystemBase {
                 if (isCalibrated) {
                     double error = targetAngleDeg - currentAngle;
                     
+                    // Check if current position is out of bounds
+                    boolean softLockOutOfBounds = currentAngle < TurretConstants.minAngleDeg || 
+                                                   currentAngle > TurretConstants.maxAngleDeg;
+                    
+                    // Normalize error for shortest VALID path (unless out of bounds)
+                    if (!softLockOutOfBounds) {
+                        double normalizedError = error;
+                        while (normalizedError > 180) normalizedError -= 360;
+                        while (normalizedError < -180) normalizedError += 360;
+                        
+                        // Check if the shorter path stays within physical limits
+                        double shortestPathTarget = currentAngle + normalizedError;
+                        if (shortestPathTarget >= TurretConstants.minAngleDeg && 
+                            shortestPathTarget <= TurretConstants.maxAngleDeg) {
+                            error = normalizedError;
+                        }
+                        // Otherwise use original longer path
+                    }
+                    
+                    // Recalculate effective target based on (possibly normalized) error
+                    double effectiveTarget = currentAngle + error;
+                    
                     if (Math.abs(error) <= TurretConstants.positionTolerance) {
                         outputPower = 0;
                     } else {
-                        // PID controller (disable built-in F, we handle it manually)
-                        positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
-                        double pidPower = positionPIDF.calculate(currentAngle, targetAngleDeg);
+                        // PID controller using DEGREE parameters (disable built-in F, we handle it manually)
+                        positionPIDF.setPIDF(TurretConstants.kP_deg, TurretConstants.kI_deg, TurretConstants.kD_deg, 0);
+                        double pidPower = positionPIDF.calculate(currentAngle, effectiveTarget);
+                        
+                        // IMPORTANT: Negate PID output!
+                        // PID gives positive when target > current (error > 0, target on right)
+                        // But positive motor power DECREASES angle (turns left)
+                        // So we negate: error > 0 → need negative power to go right
+                        pidPower = -pidPower;
                         
                         // Add F manually with direction awareness (static friction compensation)
-                        // F pushes in the direction of error
-                        double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                        // error > 0 means target is to the right, need negative power
+                        // error < 0 means target is to the left, need positive power
+                        double feedforward = (error > 0) ? -TurretConstants.kF_deg : TurretConstants.kF_deg;
                         outputPower = pidPower + feedforward;
                         
                         // Clamp to max output
@@ -1018,10 +1065,15 @@ public class Turret extends SubsystemBase {
                             if (Math.abs(error) <= TurretConstants.positionTolerance) {
                                 outputPower = 0;
                             } else {
-                                // PID + direction-aware F
-                                positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
+                                // PID + direction-aware F (using DEGREE parameters)
+                                positionPIDF.setPIDF(TurretConstants.kP_deg, TurretConstants.kI_deg, TurretConstants.kD_deg, 0);
                                 double pidPower = positionPIDF.calculate(currentAngle, desiredAngle);
-                                double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                                
+                                // IMPORTANT: Negate PID output!
+                                pidPower = -pidPower;
+                                
+                                // error > 0 means target is to the right, need negative power
+                                double feedforward = (error > 0) ? -TurretConstants.kF_deg : TurretConstants.kF_deg;
                                 outputPower = pidPower + feedforward;
                                 outputPower = Math.max(-TurretConstants.maxOutputPower, 
                                                        Math.min(TurretConstants.maxOutputPower, outputPower));
@@ -1031,10 +1083,8 @@ public class Turret extends SubsystemBase {
                     }
                     
                     // ===== NORMAL MODE: Choose between TX tracking and inertial =====
-                    // TX tracking is ONLY allowed when:
-                    // 1. hasValidTx (tag is visible)
-                    // 2. currentDetectedTagId == targetTagId (seeing OUR alliance's tag)
-                    boolean canUseTxTracking = hasValidTx && (currentDetectedTagId == targetTagId);
+                    // TX tracking ONLY when seeing tag 24 (red goal)
+                    boolean canUseTxTracking = hasValidTx && (currentDetectedTagId == 24);
                     
                     if (canUseTxTracking) {
                         // ===== TX TRACKING MODE =====
@@ -1052,21 +1102,24 @@ public class Turret extends SubsystemBase {
                         rawDesiredAngle = calculateAngleToGoal();
                     }
                     
+                    // ===== CHECK IF CURRENT POSITION IS OUT OF BOUNDS =====
+                    // If turret is already beyond physical limits, force return to 0°
+                    boolean currentOutOfBounds = currentAngle < TurretConstants.minAngleDeg || 
+                                                  currentAngle > TurretConstants.maxAngleDeg;
+                    
                     // ===== UNWIND CHECK (no slip ring protection) =====
                     // If target is beyond the unwind threshold (e.g., behind robot),
-                    // FORCE switch to inertial mode and return turret to 0°
-                    // This prevents wire tangling in a non-360° turret.
-                    if (shouldUnwind(rawDesiredAngle)) {
-                        // Target is unreachable, start unwind sequence
+                    // OR if current position is out of bounds,
+                    // FORCE return turret to 0°
+                    if (shouldUnwind(rawDesiredAngle) || currentOutOfBounds) {
+                        // Target is unreachable OR turret is out of bounds
                         if (!isUnwinding) {
                             isUnwinding = true;
                             lastValidTargetAngle = rawDesiredAngle;
-                            // Force switch to inertial mode BEFORE starting unwind
-                            // (This ensures we're using odometry-based targeting)
                         }
                         desiredAngle = 0;  // Return to forward position
                     } else {
-                        // Target is reachable, use calculated angle
+                        // Target is reachable and current position is valid
                         desiredAngle = rawDesiredAngle;
                     }
                     
@@ -1076,13 +1129,47 @@ public class Turret extends SubsystemBase {
                     
                     double error = desiredAngle - currentAngle;
                     
+                    // ===== NORMALIZE ERROR FOR SHORTEST VALID PATH =====
+                    // Only normalize if NOT out of bounds - if out of bounds,
+                    // we want to take the DIRECT path back, not the "shortest" one
+                    // which might go further out of bounds.
+                    if (!currentOutOfBounds) {
+                        // Normal case: wrap error to find shorter path
+                        double normalizedError = error;
+                        while (normalizedError > 180) normalizedError -= 360;
+                        while (normalizedError < -180) normalizedError += 360;
+                        
+                        // Check if the shorter path stays within physical limits
+                        double shortestPathTarget = currentAngle + normalizedError;
+                        if (shortestPathTarget >= TurretConstants.minAngleDeg && 
+                            shortestPathTarget <= TurretConstants.maxAngleDeg) {
+                            // Shortest path is valid, use it
+                            error = normalizedError;
+                        }
+                        // Otherwise, use original (longer) path which should stay in bounds
+                    }
+                    // If out of bounds, use direct error to get back to safe zone
+                    
+                    // IMPORTANT: Recalculate desiredAngle based on (possibly normalized) error
+                    // This ensures PIDF.calculate() uses the correct error internally
+                    double effectiveDesiredAngle = currentAngle + error;
+                    
                     if (Math.abs(error) <= TurretConstants.positionTolerance) {
                         outputPower = 0;  // On target
                     } else {
-                        // PID + direction-aware F (static friction compensation)
-                        positionPIDF.setPIDF(TurretConstants.kP, TurretConstants.kI, TurretConstants.kD, 0);
-                        double pidPower = positionPIDF.calculate(currentAngle, desiredAngle);
-                        double feedforward = (error > 0) ? TurretConstants.kF : -TurretConstants.kF;
+                        // PID + direction-aware F (using DEGREE parameters)
+                        positionPIDF.setPIDF(TurretConstants.kP_deg, TurretConstants.kI_deg, TurretConstants.kD_deg, 0);
+                        double pidPower = positionPIDF.calculate(currentAngle, effectiveDesiredAngle);
+                        
+                        // IMPORTANT: Negate PID output!
+                        // PID gives positive when target > current (error > 0, target on right)
+                        // But positive motor power DECREASES angle (turns left)
+                        // So we negate: error > 0 → need negative power to go right
+                        pidPower = -pidPower;
+                        
+                        // error > 0 means target is to the right, need negative power
+                        // error < 0 means target is to the left, need positive power
+                        double feedforward = (error > 0) ? -TurretConstants.kF_deg : TurretConstants.kF_deg;
                         outputPower = pidPower + feedforward;
                         
                         // Clamp to max output

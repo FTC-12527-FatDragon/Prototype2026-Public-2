@@ -51,6 +51,11 @@ public class Solo extends CommandOpMode {
     private boolean lastIntakeDisableCombo = false;   // LT + LB
     private boolean lastShooterDisableCombo = false;  // RT + RB
     private boolean lastTurretDisableCombo = false;   // LB + RB
+    
+    // Turret PID hold delay: wait 0.3s after D-Pad release before locking
+    private boolean lastDpadPressed = false;
+    private long dpadReleaseTime = 0;
+    private static final long TURRET_HOLD_DELAY_MS = 300;  // 0.3 seconds
 
     @Override
     public void initialize() {
@@ -89,6 +94,8 @@ public class Solo extends CommandOpMode {
         // Motor is already in BRAKE mode, so it holds position when power = 0
         if (robot.turret != null) {
             robot.turret.disableLock();  // MANUAL mode
+            // Initialize dpadReleaseTime so PID lock works from the start
+            dpadReleaseTime = System.currentTimeMillis();
         }
     }
 
@@ -123,12 +130,13 @@ public class Solo extends CommandOpMode {
         lastTurretDisableCombo = turretDisableCombo;
         
         // ========== D-PAD TURRET OPEN-LOOP CONTROL ==========
-        // D-Pad Left: Turn left (CCW) at 0.5 power
-        // D-Pad Right: Turn right (CW) at 0.5 power
-        // Release: Active position hold using PID (stronger than passive BRAKE)
+        // D-Pad Left: Turn left (CCW) at 1.0 power
+        // D-Pad Right: Turn right (CW) at 1.0 power
+        // Release: Wait 0.3s then PID hold (let turret settle first)
         if (robot.turret != null) {
             boolean dpadLeft = gamepadEx1.getButton(GamepadKeys.Button.DPAD_LEFT);
             boolean dpadRight = gamepadEx1.getButton(GamepadKeys.Button.DPAD_RIGHT);
+            boolean dpadPressed = dpadLeft || dpadRight;
             
             if (dpadLeft) {
                 robot.turret.releaseHold();   // Allow manual control
@@ -137,11 +145,25 @@ public class Solo extends CommandOpMode {
                 robot.turret.releaseHold();   // Allow manual control
                 robot.turret.setPower(-1.0);  // Right (angle increases)
             } else {
-                // No D-pad input: actively hold current position with PID
-                if (!robot.turret.isHoldingPosition()) {
-                    robot.turret.holdCurrentPosition();  // Lock to current angle
+                // D-Pad released: wait 0.3s before PID lock
+                if (lastDpadPressed && !dpadPressed) {
+                    // Just released D-Pad, record time
+                    dpadReleaseTime = System.currentTimeMillis();
+                    robot.turret.releaseHold();  // Keep released during delay
+                    robot.turret.setPower(0);    // Stop motor
+                }
+                
+                // Check if delay has passed
+                long timeSinceRelease = System.currentTimeMillis() - dpadReleaseTime;
+                if (dpadReleaseTime > 0 && timeSinceRelease >= TURRET_HOLD_DELAY_MS) {
+                    // Delay passed: activate PID hold
+                    if (!robot.turret.isHoldingPosition()) {
+                        robot.turret.holdCurrentPosition();  // Lock to current angle
+                    }
                 }
             }
+            
+            lastDpadPressed = dpadPressed;
         }
         
         // --- Odometry Pose Telemetry ---
@@ -198,6 +220,7 @@ public class Solo extends CommandOpMode {
         telemetry.addData("READY TO SHOOT", robot.shooter.isShooterAtSetPoint());
         telemetry.addData("SHOOTER STATE", robot.shooter.shooterState);
         telemetry.addData("Current Velocity", String.format("%.0f TPS", robot.shooter.getVelocity()));
+        telemetry.addData("BOOST", robot.shooter.getBoostStatus());
         
         telemetry.update();
 
