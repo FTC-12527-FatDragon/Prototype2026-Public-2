@@ -47,7 +47,7 @@ public class RedNearAuto extends AutoCommandBase {
     private static final Pose SAMPLE2_CTRL1 = new Pose(80.38, 43.59);
     private static final Pose SAMPLE2_CTRL2 = new Pose(73.67, 33.14);
     
-    private static final Pose FINAL_INTAKE_POSE = new Pose(128.04, 101.11, Math.toRadians(0));
+    private static final Pose FINAL_INTAKE_POSE = new Pose(123.31, 64.06, Math.toRadians(0));
     
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 500;
