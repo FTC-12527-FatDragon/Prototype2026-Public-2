@@ -221,10 +221,9 @@ public class Solo extends CommandOpMode {
             
             if (canSeeAnyGoalTag) {
                 // Use vision to calibrate absolute position (with turret offset)
-                // Pass turret angle in DEGREES (method only updates when turret is near 0°)
-                double turretAngleDeg = (robot.turret != null && robot.turret.isCalibrated()) 
-                        ? robot.turret.getAngleDegrees() : 0;
-                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngleDeg);
+                double turretAngle = (robot.turret != null && robot.turret.isCalibrated()) 
+                        ? robot.turret.getAngleRadians() : 0;
+                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
             } else {
                 // No tag visible - maintain position using odometry delta
                 robot.drive.updateAbsolutePositionFromOdometry();
