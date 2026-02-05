@@ -55,8 +55,15 @@ public class DriveConstants {
     
     // ==================== AUTO-AIM TARGET COORDINATES ====================
     // Goal positions for auto-aim (in inches) - BASKET CENTER
-    // Blue basket: (4, 140)
-    // Red basket: (140, 140)
+    // 
+    // Pedro Pathing Coordinate System:
+    // - Origin (0, 0) at bottom-left corner
+    // - X: 0 (left) to 144 (right)
+    // - Y: 0 (bottom) to 144 (top)
+    // - Heading: 0° = +X (right), 90° = +Y (up), 180° = left, 270° = down
+    //
+    // Blue basket at top-left: (4, 140)
+    // Red basket at top-right: (140, 140)
     public static double blueGoalX = 4;
     public static double blueGoalY = 140;
     public static double redGoalX = 140;

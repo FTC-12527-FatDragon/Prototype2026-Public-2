@@ -8,7 +8,7 @@ public class TransitConstants {
     public static String limitServoName = "limitServo";
 
     public static double transitUpPos = 0.36;    // Firing
-    public static double transitDownPos = 0.62;  // Not firing
+    public static double transitDownPos = 0.61;  // Not firing
     
     // Limit servo positions
     public static double limitOpenPos = 0.4;     // Open

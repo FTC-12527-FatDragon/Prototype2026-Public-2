@@ -12,8 +12,10 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
 import org.firstinspires.ftc.teamcode.commands.autocommands.AutoDriveCommand;
+import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForShooterCommand;
 import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForTurretCommand;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
+import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
 
 /**
  * Red Far Auto - Continuous intake/shoot cycles (Red Alliance, Far side)
@@ -38,7 +40,8 @@ public class RedFarAuto extends AutoCommandBase {
     
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 1000;
-    public static long SHOOT_WAIT_MS = 3000;
+    public static long SHOOTER_SPINUP_TIMEOUT_MS = 2000;
+    public static long TRANSIT_OPEN_MS = 1200;
     public static long TURRET_TIMEOUT_MS = 1000;
     
     // Turret angle: Red Far: -21.3° (aim left toward red basket at 140, 140)
@@ -53,7 +56,10 @@ public class RedFarAuto extends AutoCommandBase {
         return new SequentialCommandGroup(
                 new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
                 new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
-                new WaitCommand(SHOOT_WAIT_MS),
+                new WaitForShooterCommand(shooter, SHOOTER_SPINUP_TIMEOUT_MS),
+                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
+                new WaitCommand(TRANSIT_OPEN_MS),
+                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
                 new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP)),
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );

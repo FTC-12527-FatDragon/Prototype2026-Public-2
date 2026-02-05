@@ -12,7 +12,9 @@ import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
 import org.firstinspires.ftc.teamcode.commands.autocommands.AutoDriveCommand;
+import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForShooterCommand;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
+import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
 
 /**
  * Red Near Auto 2 - Modified sample collection auto (Red Alliance, Near side)
@@ -55,7 +57,8 @@ public class RedNearAuto2 extends AutoCommandBase {
     
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 500;
-    public static long SHOOT_WAIT_MS = 1500;
+    public static long SHOOTER_SPINUP_TIMEOUT_MS = 2000;
+    public static long TRANSIT_OPEN_MS = 1200;
     public static long TURRET_SETTLE_MS = 300;
     
     // Turret angle when at SHOOT_POSE
@@ -67,13 +70,30 @@ public class RedNearAuto2 extends AutoCommandBase {
         return START_POSE;
     }
     
+    /**
+     * Shoot command - Shooter is already running in SLOW mode.
+     * Uses same firing logic as Solo: waits for shooter speed, triggers boost, then fires.
+     */
     private Command shootCommand() {
         return new SequentialCommandGroup(
+                // 1. Set turret angle and wait for it to reach
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new WaitCommand(TURRET_SETTLE_MS),
-                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
-                new WaitCommand(SHOOT_WAIT_MS),
-                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP)),
+                // 2. Wait for shooter to reach target velocity
+                new WaitForShooterCommand(shooter, 2000),
+                // 3. Start firing boost timer (same as Solo LT + bumper)
+                new InstantCommand(() -> shooter.setTransitFiring(true)),
+                // 4. Wait for boost delay (200ms) before opening transit
+                new WaitCommand(200),
+                // 5. Open transit to release ball (boost now active)
+                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
+                // 6. Wait for ball to exit (boost continues ramping during this time)
+                new WaitCommand(TRANSIT_OPEN_MS),
+                // 7. Close transit
+                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
+                // 8. End firing boost
+                new InstantCommand(() -> shooter.setTransitFiring(false)),
+                // 9. Return turret to forward (shooter keeps running)
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );
     }
@@ -90,7 +110,7 @@ public class RedNearAuto2 extends AutoCommandBase {
         path1 = follower
                 .pathBuilder()
                 .addPath(new BezierLine(START_POSE, SHOOT_POSE))
-                .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(0))
+                .setLinearHeadingInterpolation(START_POSE.getHeading(), Math.toRadians(0))
                 .build();
         
         // Path 2: Shoot → Sample 1 (curve)
@@ -107,10 +127,10 @@ public class RedNearAuto2 extends AutoCommandBase {
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
-        // Path 4: Intake 1 → Shoot (straight)
+        // Path 4: Intake 1 → Shoot (curve, mirrored control point)
         path4 = follower
                 .pathBuilder()
-                .addPath(new BezierLine(INTAKE1_POSE, SHOOT_POSE))
+                .addPath(new BezierCurve(INTAKE1_POSE, new Pose(90.60, 64.83), SHOOT_POSE))
                 .setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(0))
                 .build();
         
@@ -160,9 +180,14 @@ public class RedNearAuto2 extends AutoCommandBase {
         
         // Build command sequence
         return new SequentialCommandGroup(
+                // START: Keep shooter running at SLOW throughout entire auto
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
+                
                 // === NEW SEQUENCE ===
-                // Path 1: Go to shoot position
+                // Path 1: Go to shoot + FIRST SHOT (preloaded ball)
+                new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path1),
+                shootCommand(),
                 
                 // Path 2-3: Get sample 1
                 new AutoDriveCommand(follower, path2),
@@ -194,8 +219,9 @@ public class RedNearAuto2 extends AutoCommandBase {
                 new AutoDriveCommand(follower, pathRN8),
                 shootCommand(),
                 
-                // RN Path 9: Final position
-                new AutoDriveCommand(follower, pathRN9)
+                // RN Path 9: Final position + STOP shooter
+                new AutoDriveCommand(follower, pathRN9),
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP))
         );
     }
 }

@@ -26,6 +26,7 @@ import org.firstinspires.ftc.teamcode.commands.TeleOpDriveCommand;
 import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
 import org.firstinspires.ftc.teamcode.controls.DriverControls;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
+import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 
 /**
  * Main TeleOp - Field Centric Driving with D-Pad Turret Open-Loop Control.
@@ -56,6 +57,12 @@ public class Solo extends CommandOpMode {
     private boolean lastDpadPressed = false;
     private long dpadReleaseTime = 0;
     private static final long TURRET_HOLD_DELAY_MS = 300;  // 0.3 seconds
+    
+    // Turret preset buttons edge detection
+    private boolean lastDpadDown = false;
+    private boolean lastXButton = false;
+    private boolean lastBButton = false;
+    private boolean turretAt180 = false;  // Toggle state for D-pad Down
 
     @Override
     public void initialize() {
@@ -164,6 +171,63 @@ public class Solo extends CommandOpMode {
             }
             
             lastDpadPressed = dpadPressed;
+            
+            // ========== TURRET PRESET POSITIONS ==========
+            // D-pad Down: Toggle 0° ↔ 180° (goes right, since left can't reach 180°)
+            // X: Go to -90° (left)
+            // B: Go to +90° (right)
+            boolean dpadDown = gamepadEx1.getButton(GamepadKeys.Button.DPAD_DOWN);
+            boolean xButton = gamepadEx1.getButton(GamepadKeys.Button.X);
+            boolean bButton = gamepadEx1.getButton(GamepadKeys.Button.B);
+            
+            // D-pad Down: Toggle between 0° and 180°
+            if (dpadDown && !lastDpadDown) {
+                robot.turret.releaseHold();
+                if (turretAt180) {
+                    // Currently at 180°, go back to 0°
+                    robot.turret.enableSoftLock(0);
+                    turretAt180 = false;
+                } else {
+                    // Currently at 0°, go to 180° (positive direction = right)
+                    robot.turret.enableSoftLock(180);
+                    turretAt180 = true;
+                }
+            }
+            
+            // X button: Go to -90° (left)
+            if (xButton && !lastXButton) {
+                robot.turret.releaseHold();
+                robot.turret.enableSoftLock(-90);
+                turretAt180 = false;  // Reset toggle state
+            }
+            
+            // B button: Go to +90° (right)
+            if (bButton && !lastBButton) {
+                robot.turret.releaseHold();
+                robot.turret.enableSoftLock(90);
+                turretAt180 = false;  // Reset toggle state
+            }
+            
+            lastDpadDown = dpadDown;
+            lastXButton = xButton;
+            lastBButton = bButton;
+        }
+        
+        // ========== ABSOLUTE POSITION UPDATE ==========
+        // Update absolute position continuously for chassis auto-aim
+        if (robot.vision != null) {
+            int currentTagId = robot.vision.getDetectedTagId();
+            boolean canSeeAnyGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
+            
+            if (canSeeAnyGoalTag) {
+                // Use vision to calibrate absolute position (with turret offset)
+                double turretAngle = (robot.turret != null && robot.turret.isCalibrated()) 
+                        ? robot.turret.getAngleRadians() : 0;
+                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
+            } else {
+                // No tag visible - maintain position using odometry delta
+                robot.drive.updateAbsolutePositionFromOdometry();
+            }
         }
         
         // --- Odometry Pose Telemetry ---
@@ -183,6 +247,15 @@ public class Solo extends CommandOpMode {
         } else {
             telemetry.addLine("Vision not available");
         }
+        
+        // --- Absolute Position (for auto-aim) ---
+        telemetry.addLine("=== ABS POSITION ===");
+        telemetry.addData("Has Abs Pos", robot.drive.hasAbsolutePosition() ? "YES" : "NO");
+        if (robot.drive.hasAbsolutePosition()) {
+            telemetry.addData("Abs X", String.format("%.1f in", robot.drive.getAbsoluteX()));
+            telemetry.addData("Abs Y", String.format("%.1f in", robot.drive.getAbsoluteY()));
+            telemetry.addData("Abs Heading", String.format("%.1f°", Math.toDegrees(robot.drive.getAbsoluteHeading())));
+        }
         telemetry.addLine("A = Chassis Auto-Aim");
         
         // --- Intake/Shooter Status ---
@@ -200,10 +273,11 @@ public class Solo extends CommandOpMode {
         
         // --- Turret Status (Open Loop) ---
         if (robot.turret != null) {
-            telemetry.addLine("=== TURRET (MANUAL) ===");
+            telemetry.addLine("=== TURRET ===");
             telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
+            telemetry.addData("Target", String.format("%.1f°", robot.turret.getTargetAngle()));
             telemetry.addData("Mode", robot.turret.getLockMode());
-            telemetry.addLine("D-Pad L=Left(0.5) | R=Right(-0.5)");
+            telemetry.addLine("←→=Manual | ↓=0/180 | X=-90 | B=+90");
         }
         
         // --- Emergency Disable Status (Gamepad2) ---

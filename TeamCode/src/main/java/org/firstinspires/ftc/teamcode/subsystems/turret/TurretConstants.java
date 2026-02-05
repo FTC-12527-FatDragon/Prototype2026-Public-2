@@ -35,15 +35,13 @@ public class TurretConstants {
     
     // Angle limits (degrees, 0 = forward)
     // Positive = clockwise (right), Negative = counterclockwise (left)
-    // Physical limits: +23000 ticks (right), -22000 ticks (left)
-    // At ~120 ticks/degree: +192°, -183°
-    public static double minAngleDeg = -180.0;   // Minimum angle (left limit)
-    public static double maxAngleDeg = 190.0;    // Maximum angle (right limit)
+    // Physical limits: -145° (left), +240° (right)
+    public static double minAngleDeg = -145.0;   // Minimum angle (left limit)
+    public static double maxAngleDeg = 240.0;    // Maximum angle (right limit)
     
-    // Unwind threshold: if target is beyond this angle, turret will return to 0°
-    // This prevents the turret from "chasing" targets behind the robot
-    // Set slightly below physical limits to allow safe unwind
-    public static double unwindThreshold = 170.0;  // degrees - if |targetAngle| > this, unwind to 0°
+    // Unwind threshold: if |target angle| >= this, turret will flip 180° to the other side
+    // This prevents the turret from hitting physical limits when target is behind robot
+    public static double unwindThreshold = 200.0;  // degrees - flip when target is far behind
     
     // ==================== GEOMETRY (Limelight on turret) ====================
     // Turret center is behind chassis center
@@ -81,12 +79,25 @@ public class TurretConstants {
     
     // ==================== HARD LOCK (Absolute Position Tracking) ====================
     // Uses robot absolute position to calculate turret angle to goal
+    // 
+    // Pedro Pathing Coordinate System:
+    // - Origin (0, 0) at bottom-left corner of field
+    // - X increases to the right (0 to 144 inches)
+    // - Y increases upward (0 to 144 inches)
+    // - Heading: 0° = +X (right), 90° = +Y (up), 180° = -X (left), 270° = -Y (down)
+    // - CCW is positive for heading
+    //
+    // Field Layout:
+    // - Blue alliance on LEFT side (low X)
+    // - Red alliance on RIGHT side (high X)
+    // - Blue basket at top-left corner (~4, 140)
+    // - Red basket at top-right corner (~140, 140)
     
     // Goal positions (field coordinates, inches) - BASKET CENTER
-    public static double blueGoalX = 4.0;     // Blue basket X
-    public static double blueGoalY = 140.0;   // Blue basket Y
-    public static double redGoalX = 140.0;    // Red basket X
-    public static double redGoalY = 140.0;    // Red basket Y
+    public static double blueGoalX = 4.0;     // Blue basket X (left side)
+    public static double blueGoalY = 140.0;   // Blue basket Y (top)
+    public static double redGoalX = 140.0;    // Red basket X (right side)
+    public static double redGoalY = 140.0;    // Red basket Y (top)
     
     // AprilTag positions (field coordinates, inches) - TAG POSITION (NOT basket!)
     // Tags are in front of the baskets, so TX tracking sees the tag, not the basket

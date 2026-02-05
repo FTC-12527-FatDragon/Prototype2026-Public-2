@@ -46,9 +46,16 @@ public class Shooter extends SubsystemBase {
     private long firingStartTime = 0;
     private boolean isFiring = false;
     private static final long FIRING_BOOST_DELAY_MS = 200;  // 0.2 seconds
-    private static final double FIRING_BOOST_AMOUNT_FAST = 0.08;  // 8% boost for FAST (far shot)
-    private static final double FIRING_BOOST_AMOUNT_MID = 0.16;   // 16% boost for MID
-    private static final double FIRING_BOOST_AMOUNT_SLOW = 0.18;  // 18% boost for SLOW (close shot)
+    private static final long FIRING_BOOST_RAMP_MS = 1000;        // Ramp duration (1 second)
+    // SLOW (close shot) linear boost: 30% → 45%
+    private static final double FIRING_BOOST_SLOW_START = 0.30;
+    private static final double FIRING_BOOST_SLOW_END = 0.45;
+    // MID linear boost: 27% → 38%
+    private static final double FIRING_BOOST_MID_START = 0.27;
+    private static final double FIRING_BOOST_MID_END = 0.38;
+    // FAST (far shot) linear boost: 25% → 40%
+    private static final double FIRING_BOOST_FAST_START = 0.25;
+    private static final double FIRING_BOOST_FAST_END = 0.40;
     private static final long FIRING_BOOST_MAX_DURATION_MS = 1000;  // Max 1 second boost
     private double lockedPower = 0;  // Power locked when boost activates
     private boolean boostActive = false;  // True when using locked power + boost
@@ -188,13 +195,43 @@ public class Shooter extends SubsystemBase {
     }
     
     /**
+     * Calculates boost amount based on shooter state and time since boost started.
+     * All modes use linear ramp over 1 second:
+     * - SLOW: 30% → 45%
+     * - MID:  27% → 38%
+     * - FAST: 25% → 40%
+     * @return Boost amount (0.0 to 1.0)
+     */
+    private double calculateBoostAmount() {
+        // Calculate progress (0 to 1) based on elapsed time
+        long boostElapsed = System.currentTimeMillis() - firingStartTime - FIRING_BOOST_DELAY_MS;
+        boostElapsed = Math.max(0, boostElapsed);  // Clamp to 0 if negative
+        double progress = Math.min(1.0, (double) boostElapsed / FIRING_BOOST_RAMP_MS);
+        
+        double startBoost, endBoost;
+        if (shooterState == ShooterState.SLOW) {
+            startBoost = FIRING_BOOST_SLOW_START;
+            endBoost = FIRING_BOOST_SLOW_END;
+        } else if (shooterState == ShooterState.FAST) {
+            startBoost = FIRING_BOOST_FAST_START;
+            endBoost = FIRING_BOOST_FAST_END;
+        } else {  // MID
+            startBoost = FIRING_BOOST_MID_START;
+            endBoost = FIRING_BOOST_MID_END;
+        }
+        
+        return startBoost + (endBoost - startBoost) * progress;
+    }
+    
+    /**
      * Gets boost status for debugging.
      * @return String describing current boost state
      */
     public String getBoostStatus() {
         if (boostActive) {
-            return "ACTIVE (+" + (int)(((shooterState == ShooterState.FAST) ? FIRING_BOOST_AMOUNT_FAST 
-                    : (shooterState == ShooterState.SLOW) ? FIRING_BOOST_AMOUNT_SLOW : FIRING_BOOST_AMOUNT_MID) * 100) + "%)";
+            double boostAmount = calculateBoostAmount();
+            // All modes now use linear ramping
+            return "ACTIVE (+" + (int)(boostAmount * 100) + "% ramping)";
         } else if (isFiring && transitFiring) {
             long elapsed = System.currentTimeMillis() - firingStartTime;
             if (elapsed < FIRING_BOOST_DELAY_MS) {
@@ -275,7 +312,7 @@ public class Shooter extends SubsystemBase {
         
         // Check if current velocity is close to target velocity
         // FAST mode uses tighter tolerance for better accuracy
-        double epsilon = (shooterState == ShooterState.FAST) ? 15000 : ShooterConstants.shooterEpsilon;
+        double epsilon = (shooterState == ShooterState.FAST) ? 12000 : ShooterConstants.shooterEpsilon;
         boolean atSetpoint = Util.epsilonEqual(
                 calculatedVelocity,
                 targetVel,
@@ -358,8 +395,8 @@ public class Shooter extends SubsystemBase {
             lockedPower = 0;
         } else if (boostActive) {
             // BOOST MODE: Use locked power + boost, bypass pseudo closed-loop
-            double boostAmount = (shooterState == ShooterState.FAST) ? FIRING_BOOST_AMOUNT_FAST 
-                    : (shooterState == ShooterState.SLOW) ? FIRING_BOOST_AMOUNT_SLOW : FIRING_BOOST_AMOUNT_MID;
+            // FAST mode uses linear ramp, others use fixed boost
+            double boostAmount = calculateBoostAmount();
             power = Math.min(1.0, lockedPower + boostAmount);
         } else {
             // NORMAL MODE: Pseudo closed-loop control
@@ -397,8 +434,8 @@ public class Shooter extends SubsystemBase {
                 // Lock current power and activate boost mode
                 lockedPower = power;
                 boostActive = true;
-                double boostAmount = (shooterState == ShooterState.FAST) ? FIRING_BOOST_AMOUNT_FAST 
-                    : (shooterState == ShooterState.SLOW) ? FIRING_BOOST_AMOUNT_SLOW : FIRING_BOOST_AMOUNT_MID;
+                // FAST mode starts at 25% and ramps to 40%, others use fixed boost
+                double boostAmount = calculateBoostAmount();
                 power = Math.min(1.0, lockedPower + boostAmount);
             }
         }

@@ -69,9 +69,11 @@ public class Turret extends SubsystemBase {
     private double robotY = 0;
     private double robotHeading = 0;  // Radians
     
-    // Unwind state: true when turret is returning to 0° because target is unreachable
+    // Flip/Unwind state: true when turret is flipping 180° because target is unreachable
     private boolean isUnwinding = false;
-    // Last valid target angle (before unwind was triggered)
+    // The target angle to flip to (calculated when flip starts)
+    private double flipTargetAngle = 0;
+    // Last valid target angle (before flip was triggered)
     private double lastValidTargetAngle = 0;
     
     // TX tracking for hard lock (when tag is visible)
@@ -106,6 +108,10 @@ public class Turret extends SubsystemBase {
     
     // Emergency disable flag (controlled by gamepad2)
     private boolean disabled = false;
+    
+    // Manual aim offset (controlled by D-pad, added to auto-aim target)
+    private double manualAimOffset = 0.0;
+    public static double manualOffsetSpeed = 1.5;  // Degrees per loop iteration
 
     /**
      * Constructor for Turret.
@@ -613,6 +619,60 @@ public class Turret extends SubsystemBase {
     public boolean isLocked() {
         return lockMode != LockMode.MANUAL;
     }
+    
+    // ==================== MANUAL AIM OFFSET ====================
+    
+    /**
+     * Adjusts the manual aim offset (for D-pad control).
+     * @param delta Amount to add to current offset (degrees).
+     */
+    public void adjustManualOffset(double delta) {
+        manualAimOffset += delta;
+        // Clamp to reasonable range
+        manualAimOffset = Math.max(-90, Math.min(90, manualAimOffset));
+    }
+    
+    /**
+     * Resets the manual aim offset to zero.
+     */
+    public void resetManualOffset() {
+        manualAimOffset = 0.0;
+    }
+    
+    /**
+     * Gets the current manual aim offset.
+     * @return Manual offset in degrees.
+     */
+    public double getManualOffset() {
+        return manualAimOffset;
+    }
+    
+    /**
+     * Directly sets motor power (for manual scan mode).
+     * Bypasses PID and lock modes but respects software limits.
+     * @param power Motor power (-1.0 to 1.0)
+     */
+    public void setMotorPower(double power) {
+        if (disabled) {
+            turretMotor.setPower(0);
+            return;
+        }
+        
+        // Apply software limits if calibrated
+        if (isCalibrated) {
+            double currentAngle = getAngleDegrees();
+            // Positive power → angle decreases → limit at minAngleDeg (left limit)
+            if (currentAngle <= TurretConstants.minAngleDeg && power > 0) {
+                power = 0;
+            }
+            // Negative power → angle increases → limit at maxAngleDeg (right limit)
+            if (currentAngle >= TurretConstants.maxAngleDeg && power < 0) {
+                power = 0;
+            }
+        }
+        
+        turretMotor.setPower(power);
+    }
 
     // ==================== ROBOT POSITION UPDATE ====================
 
@@ -721,14 +781,14 @@ public class Turret extends SubsystemBase {
     
     /**
      * Gets the current tracking mode as a string (for telemetry).
-     * @return "TX_TRACKING", "INERTIAL", "UNWINDING", or "MANUAL/SOFT"
+     * @return "TX_TRACKING", "INERTIAL", "FLIPPING", or "MANUAL/SOFT"
      */
     public String getTrackingModeString() {
         if (lockMode != LockMode.HARD_LOCK) {
             return lockMode.toString();
         }
         if (isUnwinding) {
-            return "UNWINDING";
+            return String.format("FLIPPING→%.0f°", flipTargetAngle);
         }
         if (isTxTrackingActive()) {
             return "TX_TRACKING";
@@ -743,6 +803,10 @@ public class Turret extends SubsystemBase {
      * But we want to aim at the basket center, which is offset from the tag.
      * This method calculates the angle difference so that:
      *   targetTx = txOffset  (instead of 0)
+     * 
+     * Pedro Pathing Coordinate System:
+     * - 0° = +X (right), 90° = +Y (up), 180° = -X (left), 270° = -Y (down)
+     * - Counter-clockwise is positive
      * 
      * @return TX offset in degrees (positive = basket is to the right of tag)
      */
@@ -767,14 +831,14 @@ public class Turret extends SubsystemBase {
         double dxGoal = goalX - robotX;
         double dyGoal = goalY - robotY;
         
-        // Angle to tag and goal in field coordinates
-        // Using atan2(dx, dy) because Y is forward in our coordinate system
-        double angleToTag = Math.toDegrees(Math.atan2(dxTag, dyTag));
-        double angleToGoal = Math.toDegrees(Math.atan2(dxGoal, dyGoal));
+        // Angle to tag and goal in field coordinates (Pedro Pathing: 0° = +X)
+        // atan2(dy, dx) gives angle from +X axis, CCW positive
+        double angleToTag = Math.toDegrees(Math.atan2(dyTag, dxTag));
+        double angleToGoal = Math.toDegrees(Math.atan2(dyGoal, dxGoal));
         
         // TX offset = how much we need to rotate from tag to basket
-        // Positive offset means basket is to the right of tag (from robot's view)
-        double txOffset = angleToGoal - angleToTag;
+        // For turret (CW positive): negative of the field angle difference
+        double txOffset = -(angleToGoal - angleToTag);
         
         // Normalize to [-180, 180]
         while (txOffset > 180) txOffset -= 360;
@@ -786,15 +850,16 @@ public class Turret extends SubsystemBase {
     /**
      * Calculates the turret angle needed to aim at the goal.
      * 
-     * Coordinate System:
-     * - Field: X = right, Y = forward (standard FTC)
-     * - Robot heading = 0 means facing Y+ direction (forward on field)
-     * - Turret: 0° = forward, + = clockwise (right), - = counterclockwise (left)
+     * Pedro Pathing Coordinate System:
+     * - Field: 0° = +X (right), 90° = +Y (up), 180° = -X (left), 270° = -Y (down)
+     * - Robot heading follows same convention (CCW positive)
+     * - Turret: 0° = forward (robot heading), + = right (CW), - = left (CCW)
      * 
      * Math:
-     * 1. Direction to goal (field frame) = atan2(dx, dy)  // Note: atan2(x,y) not atan2(y,x)!
-     *    - This gives angle from Y+ axis (forward), where +angle = clockwise (right)
-     * 2. Turret angle (robot frame) = direction - robotHeading
+     * 1. Direction to goal (field frame) = atan2(dy, dx)
+     *    - Standard math: angle from +X axis, CCW positive
+     * 2. Turret angle (robot frame) = robotHeading - directionToGoal
+     *    - Converts CCW positive (field) to CW positive (turret)
      * 
      * @return Required turret angle in degrees (0 = forward, + = right, - = left)
      */
@@ -804,14 +869,12 @@ public class Turret extends SubsystemBase {
         double dy = goalY - robotY;
         
         // Direction to goal in field coordinates (radians)
-        // Using atan2(dx, dy) because:
-        // - heading = 0 is Y+ direction (forward)
-        // - atan2(dx, dy) gives angle from Y+ axis, with + = clockwise (right)
-        double directionToGoal = Math.atan2(dx, dy);
+        // Pedro Pathing: atan2(dy, dx) gives angle from +X axis, CCW positive
+        double directionToGoal = Math.atan2(dy, dx);
         
         // Convert to robot-relative angle
-        // Turret angle = field direction - robot heading
-        double turretAngleRad = directionToGoal - robotHeading;
+        // Field (CCW +) to Turret (CW +): turretAngle = robotHeading - directionToGoal
+        double turretAngleRad = robotHeading - directionToGoal;
         
         // Normalize to [-π, π]
         while (turretAngleRad > Math.PI) turretAngleRad -= 2 * Math.PI;
@@ -879,20 +942,37 @@ public class Turret extends SubsystemBase {
     }
     
     /**
-     * Checks if the turret needs to unwind (target is behind robot, unreachable).
-     * When the calculated target angle exceeds the unwind threshold, the turret
-     * should return to 0° instead of trying to chase an unreachable target.
+     * Checks if the turret needs to flip 180° (target is behind robot, unreachable directly).
+     * When |target angle| >= 185°, turret flips to the opposite side instead of hitting limits.
      * 
      * @param rawTargetAngle The raw calculated target angle (before clamping)
-     * @return True if turret should unwind to 0°
+     * @return True if turret should flip 180°
      */
     public boolean shouldUnwind(double rawTargetAngle) {
-        return Math.abs(rawTargetAngle) > TurretConstants.unwindThreshold;
+        return Math.abs(rawTargetAngle) >= TurretConstants.unwindThreshold;
     }
     
     /**
-     * Checks if the turret is currently unwinding (returning to 0°).
-     * @return True if unwinding
+     * Calculates the flip target angle (180° in opposite direction).
+     * E.g., +185° → -175° (185 - 360 = -175)
+     * E.g., -190° → +170° (-190 + 360 = +170)
+     * @param rawTargetAngle The original target angle
+     * @return The flipped target angle
+     */
+    public double calculateFlipTarget(double rawTargetAngle) {
+        if (rawTargetAngle >= TurretConstants.unwindThreshold) {
+            // Target is on the right side (positive), flip to left
+            return rawTargetAngle - 360.0;
+        } else if (rawTargetAngle <= -TurretConstants.unwindThreshold) {
+            // Target is on the left side (negative), flip to right
+            return rawTargetAngle + 360.0;
+        }
+        return rawTargetAngle;  // No flip needed
+    }
+    
+    /**
+     * Checks if the turret is currently flipping/unwinding (cannot be interrupted).
+     * @return True if flipping
      */
     public boolean isUnwinding() {
         return isUnwinding;
@@ -1026,42 +1106,43 @@ public class Turret extends SubsystemBase {
                 break;
                 
             case HARD_LOCK:
-                // Goal tracking mode with UNWIND protection and alliance-specific TX tracking:
+                // Goal tracking mode with FLIP protection and alliance-specific TX tracking:
                 //
                 // TX Tracking Rules:
                 // - ONLY use TX tracking when we see OUR alliance's tag (targetTagId)
                 // - If we see the OTHER alliance's tag, use inertial navigation
                 // - Example: SoloBlue (targetTagId=20) sees red tag (24) → use inertial to aim at blue basket
                 //
-                // Unwind Rules:
-                // - If target angle > unwindThreshold, turret returns to 0°
-                // - During unwind: FORCE inertial mode (cannot be interrupted by TX)
-                // - Unwind completes when turret reaches near 0° (within tolerance)
+                // Flip Rules (when |target| >= 185°):
+                // - Turret flips 180° to the opposite side (e.g., +185° → -175°)
+                // - During flip: CANNOT be interrupted by chassis movement or TX tracking
+                // - Flip completes when turret reaches the flip target (within tolerance)
                 //
                 if (isCalibrated) {
                     double rawDesiredAngle;
                     double desiredAngle;
                     
-                    // ===== CHECK IF WE'RE IN UNWIND MODE (cannot be interrupted) =====
+                    // ===== CHECK IF WE'RE IN FLIP MODE (CANNOT be interrupted!) =====
                     if (isUnwinding) {
-                        // During unwind, ALWAYS use inertial navigation
-                        // This cannot be interrupted by TX tracking
-                        rawDesiredAngle = calculateAngleToGoal();
+                        // During flip, turret MUST complete the 180° rotation
+                        // This cannot be interrupted by TX tracking or chassis movement
                         
-                        // Check if unwind is complete (turret near 0°)
-                        // Use a slightly larger tolerance for unwind completion
-                        double unwindCompleteTolerance = TurretConstants.positionTolerance * 2;
-                        if (Math.abs(currentAngle) <= unwindCompleteTolerance) {
-                            // Unwind complete, can resume normal operation
+                        // Check if flip is complete (turret near flip target)
+                        double flipCompleteTolerance = TurretConstants.positionTolerance * 2;
+                        double errorToFlipTarget = flipTargetAngle - currentAngle;
+                        
+                        if (Math.abs(errorToFlipTarget) <= flipCompleteTolerance) {
+                            // Flip complete, can resume normal operation
                             isUnwinding = false;
                         } else {
-                            // Still unwinding, force target to 0°
-                            desiredAngle = 0;
-                            // Skip the normal unwind check below
-                            // Clamp and apply PID
+                            // Still flipping - drive to flip target
+                            desiredAngle = flipTargetAngle;
+                            
+                            // Clamp to physical limits (safety)
                             desiredAngle = Math.max(TurretConstants.minAngleDeg, 
                                                    Math.min(TurretConstants.maxAngleDeg, desiredAngle));
                             double error = desiredAngle - currentAngle;
+                            
                             if (Math.abs(error) <= TurretConstants.positionTolerance) {
                                 outputPower = 0;
                             } else {
@@ -1102,22 +1183,26 @@ public class Turret extends SubsystemBase {
                         rawDesiredAngle = calculateAngleToGoal();
                     }
                     
+                    // ===== APPLY MANUAL AIM OFFSET (D-pad control) =====
+                    rawDesiredAngle += manualAimOffset;
+                    
                     // ===== CHECK IF CURRENT POSITION IS OUT OF BOUNDS =====
-                    // If turret is already beyond physical limits, force return to 0°
+                    // If turret is already beyond physical limits, flip to safe side
                     boolean currentOutOfBounds = currentAngle < TurretConstants.minAngleDeg || 
                                                   currentAngle > TurretConstants.maxAngleDeg;
                     
-                    // ===== UNWIND CHECK (no slip ring protection) =====
-                    // If target is beyond the unwind threshold (e.g., behind robot),
-                    // OR if current position is out of bounds,
-                    // FORCE return turret to 0°
+                    // ===== FLIP CHECK (when |target| >= 185°) =====
+                    // If target is beyond the threshold (behind robot),
+                    // flip 180° to the opposite side instead of hitting limits
                     if (shouldUnwind(rawDesiredAngle) || currentOutOfBounds) {
-                        // Target is unreachable OR turret is out of bounds
+                        // Target is unreachable - need to flip 180°
                         if (!isUnwinding) {
                             isUnwinding = true;
                             lastValidTargetAngle = rawDesiredAngle;
+                            // Calculate flip target: e.g., +185° → -175°
+                            flipTargetAngle = calculateFlipTarget(rawDesiredAngle);
                         }
-                        desiredAngle = 0;  // Return to forward position
+                        desiredAngle = flipTargetAngle;  // Flip to opposite side
                     } else {
                         // Target is reachable and current position is valid
                         desiredAngle = rawDesiredAngle;

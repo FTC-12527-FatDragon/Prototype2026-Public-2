@@ -23,9 +23,14 @@ public class TurretPositionReader extends LinearOpMode {
         
         telemetry.addLine("=== TURRET POSITION READER ===");
         telemetry.addLine("Press START to begin reading");
+        telemetry.addLine("(Encoder will reset to 0 on start)");
         telemetry.update();
         
         waitForStart();
+        
+        // Reset encoder to 0 on start (same as manual mode)
+        turretMotor.setMode(com.qualcomm.robotcore.hardware.DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        turretMotor.setMode(com.qualcomm.robotcore.hardware.DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         
         while (opModeIsActive()) {
             // Read raw encoder position

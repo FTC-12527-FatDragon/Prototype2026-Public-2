@@ -47,9 +47,9 @@ public class ShooterConstants {
     public static double idlePower = 0.27;
     
     public static double stopVelocity = 175000;   // ~600 * 292 (idle reference)
-    public static double fastVelocity = 410000;   // Far shots (远射)
-    public static double midVelocity = 270000;    // Mid-range shots (中射)
-    public static double slowVelocity = 230000;   // Close shots (近射)
+    public static double fastVelocity = 418000;   // Far shots (远射)
+    public static double midVelocity = 290000;    // Mid-range shots (中射)
+    public static double slowVelocity = 224000;   // Close shots (近射)
     public static double releaseVelocity = 60000; // Threshold to consider "stopped"
     
     // Velocity tolerances for transit engagement (ticks per second)
@@ -76,7 +76,9 @@ public class ShooterConstants {
     public static double shooterServoDownPos = 0.04; // Position for SLOW/Short range
     
     // ==================== ADAPTIVE SHOOTING ====================
-    // Goal coordinates (in inches)
+    // Goal coordinates (Pedro Pathing: origin at bottom-left, X right, Y up)
+    // Blue basket at top-left: (4, 140)
+    // Red basket at top-right: (140, 140)
     public static double blueGoalX = 4;
     public static double blueGoalY = 140;
     public static double redGoalX = 140;

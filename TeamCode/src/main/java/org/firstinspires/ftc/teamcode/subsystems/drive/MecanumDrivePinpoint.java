@@ -47,6 +47,10 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     private double absoluteY = 0;           // Absolute Y in field (inches)
     private double absoluteHeading = 0;     // Absolute heading in field (radians)
     
+    // Low-pass filter for vision position (reduces jitter)
+    public static double visionFilterAlpha = 0.3;  // Filter coefficient (0-1, lower = smoother, more lag)
+    private boolean visionFilterInitialized = false;
+    
     // Last odometry pose for dead-reckoning delta calculation
     private Pose2D lastOdoPose = null;
     
@@ -486,9 +490,25 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         double limelightOffsetY_field = limelightOffsetX_chassis * sinH + limelightOffsetY_chassis * cosH;
         
         // Step 5: Chassis center = Limelight position - offset
-        absoluteX = limelightX - limelightOffsetX_field;
-        absoluteY = limelightY - limelightOffsetY_field;
-        absoluteHeading = robotHeading;  // Now this is the correct ROBOT heading
+        double rawX = limelightX - limelightOffsetX_field;
+        double rawY = limelightY - limelightOffsetY_field;
+        double rawHeading = robotHeading;
+        
+        // Step 6: Apply low-pass filter to reduce vision jitter
+        if (!visionFilterInitialized) {
+            // First reading - initialize filter with raw values
+            absoluteX = rawX;
+            absoluteY = rawY;
+            absoluteHeading = rawHeading;
+            visionFilterInitialized = true;
+        } else {
+            // Low-pass filter: new = alpha * raw + (1 - alpha) * old
+            absoluteX = visionFilterAlpha * rawX + (1 - visionFilterAlpha) * absoluteX;
+            absoluteY = visionFilterAlpha * rawY + (1 - visionFilterAlpha) * absoluteY;
+            // Special handling for heading (angle wrap-around)
+            double headingDiff = Util.normalizeAngleRadians(rawHeading - absoluteHeading);
+            absoluteHeading = Util.normalizeAngleRadians(absoluteHeading + visionFilterAlpha * headingDiff);
+        }
         
         hasAbsolutePosition = true;
         
@@ -968,7 +988,23 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     // New approach: read TX once, calculate target heading, then turn to it
     
     // Tolerance for heading alignment (degrees)
+    // Normal tolerance when y >= 50
     public static double headingToleranceDeg = 2.0;
+    // Tighter tolerance when y < 50 (closer to wall, need more precision)
+    public static double headingToleranceNearDeg = 1.0;
+    // Y threshold for switching tolerance
+    public static double nearZoneThresholdY = 50.0;
+    
+    /**
+     * Gets the effective heading tolerance based on robot's Y position.
+     * When y < 50, use tighter tolerance for more precise aiming.
+     */
+    private double getEffectiveHeadingTolerance() {
+        if (hasAbsolutePosition && absoluteY < nearZoneThresholdY) {
+            return headingToleranceNearDeg;
+        }
+        return headingToleranceDeg;
+    }
     
     /**
      * Calculates turn power to reach a target heading.
@@ -988,14 +1024,16 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         // PID control: drive error to 0 (negated for correct turn direction)
         double turn = -alignPID.calculate(0, errorDeg);
         
-        // Update aligned state based on heading error
-        isAligned = Math.abs(errorDeg) < headingToleranceDeg;
+        // Update aligned state based on heading error (use dynamic tolerance)
+        double effectiveTolerance = getEffectiveHeadingTolerance();
+        isAligned = Math.abs(errorDeg) < effectiveTolerance;
         
         return Math.max(-1, Math.min(1, turn));
     }
     
     /**
      * Checks if robot has reached target heading.
+     * Uses dynamic tolerance based on Y position.
      * 
      * @param targetHeadingRad Target heading in radians
      * @return true if within tolerance
@@ -1004,7 +1042,8 @@ public class MecanumDrivePinpoint extends SubsystemBase {
         double currentHeading = getHeading();
         double errorRad = normalizeAngle(targetHeadingRad - currentHeading);
         double errorDeg = Math.toDegrees(errorRad);
-        return Math.abs(errorDeg) < headingToleranceDeg;
+        double effectiveTolerance = getEffectiveHeadingTolerance();
+        return Math.abs(errorDeg) < effectiveTolerance;
     }
     
     /**
