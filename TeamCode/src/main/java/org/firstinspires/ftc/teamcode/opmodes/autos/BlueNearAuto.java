@@ -31,7 +31,7 @@ public class BlueNearAuto extends AutoCommandBase {
     
     // Key positions (Blue side)
     private static final Pose START_POSE = new Pose(25.68, 127.97, Math.toRadians(143.5));
-    private static final Pose SHOOT_POSE = new Pose(45.20, 101.15, Math.toRadians(180));
+    private static final Pose SHOOT_POSE = new Pose(49.23, 96.63, Math.toRadians(180));
     
     private static final Pose SAMPLE1_POSE = new Pose(8.79, 59.30, Math.toRadians(180));
     private static final Pose SAMPLE1_CTRL = new Pose(67.62, 56.74);
@@ -51,11 +51,11 @@ public class BlueNearAuto extends AutoCommandBase {
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 500;
     public static long SHOOTER_SPINUP_TIMEOUT_MS = 2000;  // Max wait for shooter to reach speed
-    public static long TRANSIT_OPEN_MS = 1200;            // Time to keep transit open for ball to exit
+    public static long TRANSIT_OPEN_MS = 1500;            // Time to keep transit open for ball to exit
     public static long TURRET_TIMEOUT_MS = 1000;
     
-    // Blue Near: +43.3° (aim right toward blue basket at 4, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = 43.3;
+    // Blue Near: +40° (aim right toward blue basket at 4, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = 40.0;
     
     @Override
     public Pose getStartPose() {
@@ -63,28 +63,25 @@ public class BlueNearAuto extends AutoCommandBase {
     }
     
     /**
-     * Shoot command - Shooter is already running in SLOW mode.
-     * Uses same firing logic as Solo: waits for shooter speed, triggers boost, then fires.
+     * Shoot command - waits for turret, triggers boost, then fires.
      */
     private Command shootAfterTurretReady() {
         return new SequentialCommandGroup(
                 // 1. Wait for turret to reach angle
                 new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
-                // 2. Wait for shooter to reach target velocity
-                new WaitForShooterCommand(shooter, 2000),
-                // 3. Start firing boost timer (same as Solo LT + bumper)
+                // 2. Start firing boost timer
                 new InstantCommand(() -> shooter.setTransitFiring(true)),
-                // 4. Wait for boost delay (200ms) before opening transit
+                // 3. Wait for boost delay (200ms) before opening transit
                 new WaitCommand(200),
-                // 5. Open transit to release ball (boost now active)
+                // 4. Open transit to release ball (boost now active)
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
-                // 6. Wait for ball to exit (boost continues ramping during this time)
+                // 5. Wait for ball to exit
                 new WaitCommand(TRANSIT_OPEN_MS),
-                // 7. Close transit
+                // 6. Close transit
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
-                // 8. End firing boost
+                // 7. End firing boost
                 new InstantCommand(() -> shooter.setTransitFiring(false)),
-                // 9. Return turret to forward (shooter keeps running)
+                // 8. Return turret to forward (shooter keeps running)
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );
     }
@@ -163,7 +160,7 @@ public class BlueNearAuto extends AutoCommandBase {
                 new AutoDriveCommand(follower, path3),
                 intakeWaitCommand(),
                 
-                // Start turret, path 4 to shoot, then shoot
+                // Path 4: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path4),
                 shootAfterTurretReady(),
@@ -172,7 +169,7 @@ public class BlueNearAuto extends AutoCommandBase {
                 new AutoDriveCommand(follower, path5),
                 intakeWaitCommand(),
                 
-                // Start turret, path 6 to shoot, then shoot
+                // Path 6: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path6),
                 shootAfterTurretReady(),
@@ -181,7 +178,7 @@ public class BlueNearAuto extends AutoCommandBase {
                 new AutoDriveCommand(follower, path7),
                 intakeWaitCommand(),
                 
-                // Start turret, path 8 to shoot, then shoot
+                // Path 8: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path8),
                 shootAfterTurretReady(),

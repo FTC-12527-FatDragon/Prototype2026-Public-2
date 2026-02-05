@@ -87,6 +87,10 @@ public abstract class AutoCommandBase extends LinearOpMode {
         // Start intake at full power for entire auto
         intake.setFullPower(true);
         intake.startIntake();
+        
+        // Start shooter idle at SLOW (close shot) speed for entire auto
+        // This ensures shooter is always spinning and ready to fire
+        shooter.setShooterState(Shooter.ShooterState.SLOW);
 
         // Main Loop (aligned with Prototype2026-Public)
         while (opModeIsActive() && !isStopRequested()) {

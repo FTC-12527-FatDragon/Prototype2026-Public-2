@@ -42,7 +42,7 @@ public class BlueFarAuto extends AutoCommandBase {
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 1000;
     public static long SHOOTER_SPINUP_TIMEOUT_MS = 2000;
-    public static long TRANSIT_OPEN_MS = 1200;
+    public static long TRANSIT_OPEN_MS = 1500;
     public static long TURRET_TIMEOUT_MS = 1000;
     
     // Turret angle when at SHOOT_POSE (relative to robot heading)

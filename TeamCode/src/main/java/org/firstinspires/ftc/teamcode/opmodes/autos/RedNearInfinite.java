@@ -33,7 +33,7 @@ public class RedNearInfinite extends AutoCommandBase {
     
     // Key positions (Red side - mirrored at x=72)
     private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(36.5));
-    private static final Pose SHOOT_POSE = new Pose(98.80, 101.15, Math.toRadians(0));
+    private static final Pose SHOOT_POSE = new Pose(94.77, 96.63, Math.toRadians(0));
     
     private static final Pose SAMPLE1_POSE = new Pose(135.21, 59.30, Math.toRadians(0));
     private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);
@@ -51,16 +51,16 @@ public class RedNearInfinite extends AutoCommandBase {
     private static final Pose RN_SAMPLE2_CTRL1 = new Pose(80.38, 43.59);
     private static final Pose RN_SAMPLE2_CTRL2 = new Pose(73.67, 33.14);
     
-    private static final Pose RN_FINAL_POSE = new Pose(128.04, 101.11, Math.toRadians(0));
+    private static final Pose RN_FINAL_POSE = new Pose(123.31, 64.06, Math.toRadians(0));
     
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 500;
     public static long SHOOTER_SPINUP_TIMEOUT_MS = 2000;
-    public static long TRANSIT_OPEN_MS = 1200;
+    public static long TRANSIT_OPEN_MS = 1500;
     public static long TURRET_TIMEOUT_MS = 1000;
     
-    // Red: -43.3° (aim left toward red basket at 140, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = -43.3;
+    // Red: -40° (aim left toward red basket at 140, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = -40.0;
     
     @Override
     public Pose getStartPose() {
@@ -68,28 +68,25 @@ public class RedNearInfinite extends AutoCommandBase {
     }
     
     /**
-     * Shoot command - Shooter is already running in SLOW mode.
-     * Uses same firing logic as Solo: waits for shooter speed, triggers boost, then fires.
+     * Shoot command - waits for turret, triggers boost, then fires.
      */
     private Command shootAfterTurretReady() {
         return new SequentialCommandGroup(
                 // 1. Wait for turret to reach angle
                 new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
-                // 2. Wait for shooter to reach target velocity
-                new WaitForShooterCommand(shooter, 2000),
-                // 3. Start firing boost timer (same as Solo LT + bumper)
+                // 2. Start firing boost timer
                 new InstantCommand(() -> shooter.setTransitFiring(true)),
-                // 4. Wait for boost delay (200ms) before opening transit
+                // 3. Wait for boost delay (200ms) before opening transit
                 new WaitCommand(200),
-                // 5. Open transit to release ball (boost now active)
+                // 4. Open transit to release ball (boost now active)
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
-                // 6. Wait for ball to exit (boost continues ramping during this time)
+                // 5. Wait for ball to exit
                 new WaitCommand(TRANSIT_OPEN_MS),
-                // 7. Close transit
+                // 6. Close transit
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
-                // 8. End firing boost
+                // 7. End firing boost
                 new InstantCommand(() -> shooter.setTransitFiring(false)),
-                // 9. Return turret to forward (shooter keeps running)
+                // 8. Return turret to forward (shooter keeps running)
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );
     }
@@ -184,10 +181,12 @@ public class RedNearInfinite extends AutoCommandBase {
                 new AutoDriveCommand(follower, path3),
                 intakeWaitCommand(),
                 
+                // Path 4: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path4),
                 shootAfterTurretReady(),
                 
+                // Sample 2 cycles
                 sample2CycleCommand(),
                 sample2CycleCommand(),
                 sample2CycleCommand(),
@@ -195,6 +194,7 @@ public class RedNearInfinite extends AutoCommandBase {
                 new AutoDriveCommand(follower, pathRN5),
                 intakeWaitCommand(),
                 
+                // PathRN6: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, pathRN6),
                 shootAfterTurretReady(),
@@ -202,6 +202,7 @@ public class RedNearInfinite extends AutoCommandBase {
                 new AutoDriveCommand(follower, pathRN7),
                 intakeWaitCommand(),
                 
+                // PathRN8: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, pathRN8),
                 shootAfterTurretReady(),
