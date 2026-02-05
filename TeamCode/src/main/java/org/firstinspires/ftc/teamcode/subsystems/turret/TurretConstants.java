@@ -62,11 +62,11 @@ public class TurretConstants {
     // ==================== POSITION PID (for DEGREES - SOFT_LOCK/HARD_LOCK) ====================
     // PID constants for angle-based control (in DEGREES)
     // Used by SOFT_LOCK and HARD_LOCK modes
-    // Approximately kP_ticks * 120 (ticksPerDegree)
-    public static double kP_deg = 0.035;   // P for degrees (~0.0003 * 120)
+    // Tuned 2026-02-05 via TurretPIDTuner
+    public static double kP_deg = 0.02;    // P for degrees (tuned)
     public static double kI_deg = 0.0;     // I for degrees
-    public static double kD_deg = 0.004;   // D for degrees (~0.00003 * 120)
-    public static double kF_deg = 0.06;    // F for degrees (static friction)
+    public static double kD_deg = 0.0008;  // D for degrees (tuned)
+    public static double kF_deg = 0.0005;  // F for degrees (tuned)
     
     // Position control parameters
     public static double positionTolerance = 5.0;   // Degrees, within this = at setpoint
@@ -94,9 +94,9 @@ public class TurretConstants {
     // - Red basket at top-right corner (~140, 140)
     
     // Goal positions (field coordinates, inches) - BASKET CENTER
-    public static double blueGoalX = 0.0;     // Blue basket X (left side)
+    public static double blueGoalX = 4.0;     // Blue basket X (left side)
     public static double blueGoalY = 140.0;   // Blue basket Y (top)
-    public static double redGoalX = 144.0;    // Red basket X (right side)
+    public static double redGoalX = 140.0;    // Red basket X (right side)
     public static double redGoalY = 140.0;    // Red basket Y (top)
     
     // AprilTag positions (field coordinates, inches) - TAG POSITION (NOT basket!)

@@ -58,29 +58,48 @@ public class Vision extends SubsystemBase {
     
     /**
      * Gets the ID of the currently detected AprilTag.
+     * ONLY returns tag 20 (blue goal) or 24 (red goal), ignores all others.
      *
-     * @return The AprilTag ID, or -1 if no tag is detected.
+     * @return The AprilTag ID (20 or 24), or -1 if no goal tag is detected.
      */
     public int getDetectedTagId() {
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
+            return -1;
+        }
+        return goalTag.getFiducialId();
+    }
+    
+    /**
+     * Gets the first detected goal tag (20 or 24) from results.
+     * Ignores all other tags (21, 22, 23, etc.).
+     *
+     * @return FiducialResult for tag 20 or 24, or null if no goal tag found.
+     */
+    private FiducialResult getFirstGoalTag() {
         LLResult result = limelight.getLatestResult();
         if (result == null || !result.isValid()) {
-            return -1;
+            return null;
         }
         
         List<FiducialResult> fiducialResults = result.getFiducialResults();
         if (fiducialResults.isEmpty()) {
-            return -1;
+            return null;
         }
         
-        // Get the first detected tag (largest/closest)
-        FiducialResult firstTag = fiducialResults.get(0);
-        
-        // Filter by minimum target area to reduce noise
-        if (firstTag.getTargetArea() < MIN_TARGET_AREA) {
-            return -1;
+        // Search for first goal tag (20 or 24)
+        for (FiducialResult tag : fiducialResults) {
+            int tagId = tag.getFiducialId();
+            // Only accept goal tags (20 = blue, 24 = red)
+            if (tagId == BLUE_GOAL_TAG_ID || tagId == RED_GOAL_TAG_ID) {
+                // Filter by minimum target area
+                if (tag.getTargetArea() >= MIN_TARGET_AREA) {
+                    return tag;
+                }
+            }
         }
         
-        return firstTag.getFiducialId();
+        return null;  // No goal tag found
     }
     
     /**
@@ -130,30 +149,16 @@ public class Vision extends SubsystemBase {
     
     /**
      * Gets the robot's position in field space from AprilTag detection.
-     * Uses the first detected AprilTag to calculate robot pose.
+     * ONLY uses goal tags (20 or 24), ignores all other tags.
      *
-     * @return Pose3D of the robot in field space (meters, degrees), or null if no valid tag detected.
+     * @return Pose3D of the robot in field space (meters, degrees), or null if no goal tag detected.
      */
     public Pose3D getRobotPose() {
-        LLResult result = limelight.getLatestResult();
-        if (result == null || !result.isValid()) {
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
             return null;
         }
-        
-        List<FiducialResult> fiducialResults = result.getFiducialResults();
-        if (fiducialResults.isEmpty()) {
-            return null;
-        }
-        
-        FiducialResult firstTag = fiducialResults.get(0);
-        
-        // Filter by minimum target area to reduce noise
-        if (firstTag.getTargetArea() < MIN_TARGET_AREA) {
-            return null;
-        }
-        
-        // Return robot pose in field space
-        return firstTag.getRobotPoseFieldSpace();
+        return goalTag.getRobotPoseFieldSpace();
     }
     
     /**
@@ -211,15 +216,23 @@ public class Vision extends SubsystemBase {
     }
     
     /**
-     * Gets the number of fiducials (AprilTags) detected.
-     * @return Number of tags detected.
+     * Gets the number of goal tags (20 or 24) detected.
+     * @return Number of goal tags detected (0, 1, or 2).
      */
     public int getNumTagsDetected() {
         LLResult result = limelight.getLatestResult();
         if (result == null || !result.isValid()) {
             return 0;
         }
-        return result.getFiducialResults().size();
+        
+        int count = 0;
+        for (FiducialResult tag : result.getFiducialResults()) {
+            int tagId = tag.getFiducialId();
+            if (tagId == BLUE_GOAL_TAG_ID || tagId == RED_GOAL_TAG_ID) {
+                count++;
+            }
+        }
+        return count;
     }
     
     /**
@@ -231,42 +244,36 @@ public class Vision extends SubsystemBase {
     }
     
     /**
-     * Gets the raw tag ID without area filtering (for debugging).
-     * @return Tag ID or -1 if no tag.
+     * Gets the raw tag ID (only goal tags 20/24).
+     * @return Tag ID (20 or 24), or -1 if no goal tag.
      */
     public int getRawTagId() {
-        LLResult result = limelight.getLatestResult();
-        if (result == null || !result.isValid()) {
-            return -1;
-        }
-        List<FiducialResult> fiducialResults = result.getFiducialResults();
-        if (fiducialResults.isEmpty()) {
-            return -1;
-        }
-        return fiducialResults.get(0).getFiducialId();
+        // Same as getDetectedTagId - only return goal tags
+        return getDetectedTagId();
     }
     
     /**
-     * Gets the target area of the first detected tag (for debugging).
-     * @return Target area or -1 if no tag.
+     * Gets the target area of the first detected goal tag (20 or 24).
+     * @return Target area or -1 if no goal tag.
      */
     public double getTagArea() {
-        LLResult result = limelight.getLatestResult();
-        if (result == null || !result.isValid()) {
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
             return -1;
         }
-        List<FiducialResult> fiducialResults = result.getFiducialResults();
-        if (fiducialResults.isEmpty()) {
-            return -1;
-        }
-        return fiducialResults.get(0).getTargetArea();
+        return goalTag.getTargetArea();
     }
     
     /**
-     * Gets tx (horizontal offset) for debugging.
-     * @return tx value or 0 if no result.
+     * Gets tx (horizontal offset) for goal tags only.
+     * @return tx value or 0 if no goal tag detected.
      */
     public double getTx() {
+        // Only return TX if we see a goal tag (20 or 24)
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
+            return 0;
+        }
         LLResult result = limelight.getLatestResult();
         if (result != null && result.isValid()) {
             return result.getTx();
@@ -275,10 +282,15 @@ public class Vision extends SubsystemBase {
     }
     
     /**
-     * Gets ty (vertical offset) for debugging.
-     * @return ty value or 0 if no result.
+     * Gets ty (vertical offset) for goal tags only.
+     * @return ty value or 0 if no goal tag detected.
      */
     public double getTy() {
+        // Only return TY if we see a goal tag (20 or 24)
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
+            return 0;
+        }
         LLResult result = limelight.getLatestResult();
         if (result != null && result.isValid()) {
             return result.getTy();
@@ -287,26 +299,19 @@ public class Vision extends SubsystemBase {
     }
     
     /**
-     * Gets the distance from robot to the detected AprilTag in inches.
-     * Uses the robot pose in target space to calculate distance.
+     * Gets the distance from robot to the detected goal AprilTag in inches.
+     * ONLY uses goal tags (20 or 24).
      * 
-     * @return Distance in inches, or -1 if no valid tag detected.
+     * @return Distance in inches, or -1 if no goal tag detected.
      */
     public double getDistanceToTag() {
-        LLResult result = limelight.getLatestResult();
-        if (result == null || !result.isValid()) {
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
             return -1;
         }
-        
-        List<FiducialResult> fiducialResults = result.getFiducialResults();
-        if (fiducialResults.isEmpty()) {
-            return -1;
-        }
-        
-        FiducialResult firstTag = fiducialResults.get(0);
         
         // Get robot pose relative to target (in meters)
-        Pose3D robotPoseTargetSpace = firstTag.getRobotPoseTargetSpace();
+        Pose3D robotPoseTargetSpace = goalTag.getRobotPoseTargetSpace();
         if (robotPoseTargetSpace == null) {
             return -1;
         }
@@ -324,21 +329,15 @@ public class Vision extends SubsystemBase {
     }
     
     /**
-     * Gets the raw robot pose WITHOUT any filtering (for debugging).
-     * @return Pose3D or null if no fiducial results.
+     * Gets the raw robot pose for goal tags only (20 or 24).
+     * @return Pose3D or null if no goal tag.
      */
     public Pose3D getRawRobotPose() {
-        LLResult result = limelight.getLatestResult();
-        if (result == null) {
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
             return null;
         }
-        // Don't check isValid() - try to get data anyway
-        List<FiducialResult> fiducialResults = result.getFiducialResults();
-        if (fiducialResults == null || fiducialResults.isEmpty()) {
-            return null;
-        }
-        // No area filtering - return raw pose
-        return fiducialResults.get(0).getRobotPoseFieldSpace();
+        return goalTag.getRobotPoseFieldSpace();
     }
     
     /**
@@ -360,16 +359,23 @@ public class Vision extends SubsystemBase {
         if (fiducialResults.isEmpty()) {
             return "fiducialResults=EMPTY";
         }
-        FiducialResult first = fiducialResults.get(0);
-        double area = first.getTargetArea();
-        if (area < MIN_TARGET_AREA) {
-            return "area=" + area + " < " + MIN_TARGET_AREA;
+        
+        // Check for goal tags
+        FiducialResult goalTag = getFirstGoalTag();
+        if (goalTag == null) {
+            // List what tags were seen
+            StringBuilder sb = new StringBuilder("No goal tag (20/24). Seen: ");
+            for (FiducialResult tag : fiducialResults) {
+                sb.append(tag.getFiducialId()).append(" ");
+            }
+            return sb.toString();
         }
-        Pose3D pose = first.getRobotPoseFieldSpace();
+        
+        Pose3D pose = goalTag.getRobotPoseFieldSpace();
         if (pose == null) {
-            return "getRobotPoseFieldSpace=NULL";
+            return "getRobotPoseFieldSpace=NULL for tag " + goalTag.getFiducialId();
         }
-        return "OK: pose available";
+        return "OK: goal tag " + goalTag.getFiducialId() + " detected";
     }
 }
 

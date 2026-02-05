@@ -1,12 +1,19 @@
 package org.firstinspires.ftc.teamcode.opmodes.teleops;
 
 /**
- * Test TeleOp - Turret Auto-Aim to RED Goal (Tag 24)
+ * SoloTest - Turret Auto-Aim with Inertial Navigation
  * 
- * Features:
- * - Absolute position calibration when seeing ANY goal tag (20 or 24)
- * - Turret ONLY aims at RED goal (tag 24 basket)
- * - Uses HARD_LOCK mode: TX tracking when seeing tag 24, inertial navigation otherwise
+ * === AUTO-AIM LOGIC ===
+ * Step 1: See any tag (20 or 24) → Calculate Limelight's field position
+ * Step 2: Use geometry (LL offset, turret offset, turret angle) → Calculate robot's absolute position & heading
+ * Step 3: Use robot position + goal position → Calculate turret target angle
+ * 
+ * === CONTROLS ===
+ * - Start: Turret locked at 0°
+ * - See tag + Press A: Start inertial navigation (auto-aim)
+ * - During auto-aim + Press A: Return to 0° and lock (back to initial state)
+ * 
+ * Target: RED goal (tag 24 basket at 140, 140)
  */
 
 import com.acmerobotics.dashboard.FtcDashboard;
@@ -18,12 +25,12 @@ import com.arcrobotics.ftclib.command.CommandScheduler;
 import com.arcrobotics.ftclib.command.InstantCommand;
 import com.arcrobotics.ftclib.gamepad.GamepadEx;
 import com.arcrobotics.ftclib.gamepad.GamepadKeys;
-import com.bylazar.configurables.annotations.Configurable;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
+import org.firstinspires.ftc.teamcode.utils.Util;
 import org.firstinspires.ftc.teamcode.controls.DriverControls;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
 import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
@@ -31,65 +38,54 @@ import org.firstinspires.ftc.teamcode.subsystems.turret.TurretConstants;
 import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 
 @Config
-@Configurable
 @com.qualcomm.robotcore.eventloop.opmode.TeleOp(name = "SoloTest", group = "TeleOp")
 public class SoloTest extends CommandOpMode {
     private Robot robot;
     private GamepadEx gamepadEx1;
-    private GamepadEx gamepadEx2;
     private boolean[] isAuto = {false};
     
-    // Edge detection for gamepad2 emergency disable combos
-    private boolean lastIntakeDisableCombo = false;
-    private boolean lastShooterDisableCombo = false;
-    private boolean lastTurretDisableCombo = false;
-    
-    // Edge detection for GP2 right stick (set turret home)
-    private boolean lastGP2RightStickButton = false;
-    
-    // ========== TURRET AIM STATE ==========
-    private enum AimState {
-        WAITING_FOR_TAG,   // Turret locked at 0°, waiting to see tag
-        TX_LOCKING,        // Doing TX lock after seeing tag + pressing A
-        INERTIAL_TRACKING  // TX lock done, using inertial navigation
-    }
-    private AimState aimState = AimState.WAITING_FOR_TAG;
+    // Edge detection
     private boolean lastAButton = false;
     
-    // TX lock parameters
-    public static long TX_LOCK_DURATION_MS = 500;   // How long to TX-lock when triggered
-    private long txLockStartTime = 0;
+    // ========== AUTO-AIM STATE ==========
+    private enum AimState {
+        LOCKED_AT_ZERO,      // Turret locked at 0°, waiting for tag + A
+        INERTIAL_NAVIGATION  // Auto-aiming using inertial navigation
+    }
+    private AimState aimState = AimState.LOCKED_AT_ZERO;
+    private boolean hasValidPosition = false;
     
-    // ========== INERTIAL NAVIGATION (Delta-based) ==========
-    // Recorded at TX lock completion
-    private double lockedTurretAngle = 0;        // Turret angle when locked
-    private double lockedOdoX = 0;               // Odometry X when locked
-    private double lockedOdoY = 0;               // Odometry Y when locked  
-    private double lockedOdoHeading = 0;         // Odometry heading when locked
-    private double lockedAbsX = 0;               // Absolute X when locked (for distance calc)
-    private double lockedAbsY = 0;               // Absolute Y when locked
-    private boolean hasLockedPosition = false;   // Whether we have a valid locked position
+    // Goal coordinates (RED goal)
+    private static final double GOAL_X = TurretConstants.redGoalX;  // 140
+    private static final double GOAL_Y = TurretConstants.redGoalY;  // 140
+    
+    // Software limits
+    private static final double MIN_TURRET_ANGLE = -145.0;
+    private static final double MAX_TURRET_ANGLE = 240.0;
+    private static final double FLIP_THRESHOLD = 185.0;
+    
+    // Flip state
+    private boolean isFlipping = false;
+    private double flipTargetAngle = 0;
 
     @Override
     public void initialize() {
         robot = new Robot(hardwareMap);
         gamepadEx1 = new GamepadEx(gamepad1);
-        gamepadEx2 = new GamepadEx(gamepad2);
 
-        // Register all subsystems including turret
+        // Register subsystems
         CommandScheduler.getInstance().registerSubsystem(robot.shooter);
         CommandScheduler.getInstance().registerSubsystem(robot.transit);
         CommandScheduler.getInstance().registerSubsystem(robot.intake);
         if (robot.turret != null) {
             CommandScheduler.getInstance().registerSubsystem(robot.turret);
-            // Set alliance to RED - turret ONLY aims at tag 24 basket
             robot.turret.setAlliance(Turret.Alliance.RED);
-            // Start with turret locked at 0° (waiting for tag)
+            // Start with turret locked at 0° (same as Solo)
             robot.turret.enableSoftLock(0);
-            aimState = AimState.WAITING_FOR_TAG;
+            aimState = AimState.LOCKED_AT_ZERO;
         }
 
-        // Left stick button: Reset heading to 0
+        // Left stick button: Reset heading
         new FunctionalButton(
                 () -> gamepadEx1.getButton(GamepadKeys.Button.LEFT_STICK_BUTTON)
         ).whenPressed(
@@ -99,45 +95,15 @@ public class SoloTest extends CommandOpMode {
         DriverControls.bind(gamepadEx1, robot, isAuto);
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
         
-        telemetry.addLine("=== SOLO TEST (RED GOAL AIM) ===");
-        telemetry.addLine("Turret aims at RED goal (tag 24)");
-        telemetry.addLine("Position calibrates on ANY goal tag");
+        telemetry.addLine("=== SOLO TEST (Inertial Auto-Aim) ===");
+        telemetry.addLine("See tag + Press A → Start auto-aim");
+        telemetry.addLine("During auto-aim + Press A → Back to 0°");
         telemetry.update();
     }
 
     @Override
     public void run() {
         CommandScheduler.getInstance().run();
-        
-        // ========== GAMEPAD2 RIGHT STICK: SET TURRET HOME ==========
-        boolean gp2RightStickButton = gamepadEx2.getButton(GamepadKeys.Button.RIGHT_STICK_BUTTON);
-        if (gp2RightStickButton && !lastGP2RightStickButton && robot.turret != null) {
-            robot.turret.setCurrentAsHome();
-        }
-        lastGP2RightStickButton = gp2RightStickButton;
-        
-        // ========== GAMEPAD2 EMERGENCY DISABLE CONTROLS ==========
-        boolean intakeDisableCombo = gamepadEx2.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) > 0.3 
-                && gamepadEx2.getButton(GamepadKeys.Button.LEFT_BUMPER);
-        boolean shooterDisableCombo = gamepadEx2.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) > 0.3 
-                && gamepadEx2.getButton(GamepadKeys.Button.RIGHT_BUMPER);
-        boolean turretDisableCombo = gamepadEx2.getButton(GamepadKeys.Button.LEFT_BUMPER) 
-                && gamepadEx2.getButton(GamepadKeys.Button.RIGHT_BUMPER)
-                && !intakeDisableCombo && !shooterDisableCombo;
-        
-        if (intakeDisableCombo && !lastIntakeDisableCombo) {
-            robot.intake.toggleDisabled();
-        }
-        if (shooterDisableCombo && !lastShooterDisableCombo) {
-            robot.shooter.toggleDisabled();
-        }
-        if (turretDisableCombo && !lastTurretDisableCombo && robot.turret != null) {
-            robot.turret.toggleDisabled();
-        }
-        
-        lastIntakeDisableCombo = intakeDisableCombo;
-        lastShooterDisableCombo = shooterDisableCombo;
-        lastTurretDisableCombo = turretDisableCombo;
         
         // ========== MANUAL DRIVE ==========
         double leftX = -gamepadEx1.getLeftX();
@@ -146,248 +112,288 @@ public class SoloTest extends CommandOpMode {
         robot.drive.setGamepad(true);
         robot.drive.moveRobotFieldRelative(leftY, leftX, rightX);
         
-        // ========== ABSOLUTE POSITION CALIBRATION ==========
-        // Calibrate position when seeing ANY goal tag (20 or 24)
-        // But turret only aims at tag 24 (RED goal)
-        if (robot.vision != null) {
-            int currentTagId = robot.vision.getDetectedTagId();
-            boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
-            
-            if (isGoalTag) {
-                // Get turret angle for position calculation
-                double turretAngle = (robot.turret != null && robot.turret.isCalibrated()) 
-                    ? robot.turret.getAngleRadians() : 0;
-                // Update absolute position from vision (works with ANY goal tag)
-                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
-            } else {
-                // No tag visible - update from odometry delta
-                robot.drive.updateAbsolutePositionFromOdometry();
-            }
-        }
+        // ========== UPDATE ABSOLUTE POSITION ==========
+        updateAbsolutePosition();
         
-        // ========== GAMEPAD2 D-PAD: MANUAL TURRET AIM OFFSET ==========
-        if (robot.turret != null) {
-            boolean dpadLeft = gamepadEx2.getButton(GamepadKeys.Button.DPAD_LEFT);
-            boolean dpadRight = gamepadEx2.getButton(GamepadKeys.Button.DPAD_RIGHT);
-            
-            if (dpadLeft) {
-                // D-pad left: decrease aim offset (turn turret left/CCW)
-                robot.turret.adjustManualOffset(-robot.turret.manualOffsetSpeed);
-            } else if (dpadRight) {
-                // D-pad right: increase aim offset (turn turret right/CW)
-                robot.turret.adjustManualOffset(robot.turret.manualOffsetSpeed);
-            }
-            
-            // Reset offset on D-pad down
-            if (gamepadEx2.getButton(GamepadKeys.Button.DPAD_DOWN)) {
-                robot.turret.resetManualOffset();
-            }
-        }
-        
-        // ========== TURRET AIM STATE MACHINE ==========
+        // ========== A BUTTON STATE MACHINE ==========
         boolean aButton = gamepadEx1.getButton(GamepadKeys.Button.A);
-        Pose2D currentOdoPose = robot.drive.getPose();
-        double currentOdoX = currentOdoPose.getX(DistanceUnit.INCH);
-        double currentOdoY = currentOdoPose.getY(DistanceUnit.INCH);
-        double currentOdoHeading = currentOdoPose.getHeading(AngleUnit.RADIANS);
+        boolean aPressed = aButton && !lastAButton;  // Rising edge
         
         if (robot.turret != null && robot.vision != null) {
-            int currentTagId = robot.vision.getDetectedTagId();
-            boolean canSeeTargetTag = (currentTagId == Vision.RED_GOAL_TAG_ID);
-            boolean canSeeAnyGoalTag = (currentTagId == Vision.RED_GOAL_TAG_ID || currentTagId == Vision.BLUE_GOAL_TAG_ID);
+            int tagId = robot.vision.getDetectedTagId();
+            boolean canSeeGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
             
             switch (aimState) {
-                case WAITING_FOR_TAG:
-                    // Turret locked at 0°, waiting to see tag
-                    // Press A while seeing target tag → start TX lock
-                    if (aButton && !lastAButton && canSeeTargetTag) {
-                        aimState = AimState.TX_LOCKING;
-                        txLockStartTime = System.currentTimeMillis();
-                        robot.turret.disableLock(); // Switch to manual for TX tracking
+                case LOCKED_AT_ZERO:
+                    // Turret ALWAYS locked at 0° in this state (enforce every loop)
+                    // This prevents any drift or unintended tracking
+                    if (robot.turret.getLockMode() != Turret.LockMode.SOFT_LOCK || 
+                        Math.abs(robot.turret.getTargetAngle()) > 0.1) {
+                        robot.turret.enableSoftLock(0);
+                    }
+                    
+                    // If see tag AND press A → start inertial navigation
+                    if (aPressed && canSeeGoalTag && hasValidPosition) {
+                        aimState = AimState.INERTIAL_NAVIGATION;
+                        isFlipping = false;
                     }
                     break;
                     
-                case TX_LOCKING:
-                    // TX lock: use current TX to fine-tune angle
-                    if (canSeeTargetTag) {
-                        double tx = robot.vision.getTx();
-                        // Apply correction based on TX (P control)
-                        double correction = tx * 0.03; // Gain for TX tracking
-                        robot.turret.setMotorPower(-correction); // Negative: positive TX = target is right
+                case INERTIAL_NAVIGATION:
+                    // Auto-aiming with inertial navigation
+                    // Press A → return to 0° and lock (back to initial state)
+                    if (aPressed) {
+                        aimState = AimState.LOCKED_AT_ZERO;
+                        robot.turret.enableSoftLock(0);
+                        isFlipping = false;
                     } else {
-                        robot.turret.setMotorPower(0); // Lost tag, stop
-                    }
-                    
-                    // Check if lock duration expired
-                    if (System.currentTimeMillis() - txLockStartTime >= TX_LOCK_DURATION_MS) {
-                        // TX lock complete → record state for inertial tracking
-                        robot.turret.setMotorPower(0);
-                        
-                        // Record turret angle at lock
-                        lockedTurretAngle = robot.turret.getAngleDegrees();
-                        
-                        // Record odometry at lock (for delta calculation)
-                        lockedOdoX = currentOdoX;
-                        lockedOdoY = currentOdoY;
-                        lockedOdoHeading = currentOdoHeading;
-                        
-                        // Record absolute position at lock (for distance calculation)
-                        if (robot.drive.hasAbsolutePosition()) {
-                            lockedAbsX = robot.drive.getAbsoluteX();
-                            lockedAbsY = robot.drive.getAbsoluteY();
-                            hasLockedPosition = true;
-                        }
-                        
-                        // Switch to inertial tracking with SOFT_LOCK
-                        aimState = AimState.INERTIAL_TRACKING;
-                        robot.turret.enableSoftLock(lockedTurretAngle);
+                        // Calculate and apply turret angle
+                        calculateAndApplyTurretAngle();
                     }
                     break;
-                    
-                case INERTIAL_TRACKING:
-                    // Delta-based inertial navigation
-                    // Odometry returns field coordinates, so delta is already in field frame
-                    double deltaX = currentOdoX - lockedOdoX;
-                    double deltaY = currentOdoY - lockedOdoY;
-                    double deltaHeading = currentOdoHeading - lockedOdoHeading;
-                    
-                    // Calculate new turret angle based on delta
-                    // Full calculation: account for both heading and position change
-                    // Estimate current absolute position (odometry delta is already in field coords)
-                    double estAbsX = lockedAbsX + deltaX;  // No rotation needed - already field coords
-                    double estAbsY = lockedAbsY + deltaY;
-                    
-                    // Calculate angle to goal from estimated position
-                    double goalX = TurretConstants.redGoalX;
-                    double goalY = TurretConstants.redGoalY;
-                    double dx = goalX - estAbsX;
-                    double dy = goalY - estAbsY;
-                    double fieldAngleToGoal = Math.atan2(dy, dx);  // Pedro: 0°=+X, 90°=+Y
-                    
-                    // Turret angle = robot heading - field angle (turret positive = CW from robot front)
-                    // When robot turns left (heading+), turret should turn right (angle+) to compensate
-                    double newTurretAngle = Math.toDegrees(currentOdoHeading - fieldAngleToGoal);
-                    // Normalize to [-180, 180]
-                    while (newTurretAngle > 180) newTurretAngle -= 360;
-                    while (newTurretAngle < -180) newTurretAngle += 360;
-                    
-                    // === SIMPLIFIED VERSION (commented out - using full version only) ===
-                    // if (!hasLockedPosition) {
-                    //     // Simplified: only compensate for heading change
-                    //     // If chassis turns left (heading+), turret should turn right (angle+) to compensate
-                    //     newTurretAngle = lockedTurretAngle + Math.toDegrees(deltaHeading);
-                    // }
-                    
-                    // Update turret target
-                    robot.turret.enableSoftLock(newTurretAngle);
-                    
-                    // Press A while seeing target tag → re-lock with TX
-                    if (aButton && !lastAButton && canSeeTargetTag) {
-                        aimState = AimState.TX_LOCKING;
-                        txLockStartTime = System.currentTimeMillis();
-                        robot.turret.disableLock();
-                    }
-                    break;
-            }
-            
-            // ========== ABSOLUTE POSITION UPDATE (any goal tag) ==========
-            // Update absolute position when seeing ANY goal tag (20 or 24)
-            // This is used for distance estimation in inertial navigation
-            if (canSeeAnyGoalTag) {
-                double turretAngle = robot.turret.isCalibrated() ? robot.turret.getAngleRadians() : 0;
-                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
-            } else {
-                robot.drive.updateAbsolutePositionFromOdometry();
             }
         }
         lastAButton = aButton;
         
-        // --- Telemetry ---
-        Pose2D pose = robot.drive.getPose();
+        // ========== INTAKE/SHOOTER CONTROLS ==========
+        handleIntakeShooter();
         
-        // === TAG DETECTION ===
-        telemetry.addLine("========== VISION ==========");
-        if (robot.vision != null) {
-            // Debug info - check why tag detection fails
-            telemetry.addData("LL Connected", robot.vision.isConnected() ? "YES" : "NO");
-            telemetry.addData("LL FPS", String.format("%.0f", robot.vision.getFps()));
-            telemetry.addData("Pipeline", robot.vision.getPipelineIndex());
-            telemetry.addData("Result Valid", robot.vision.isResultValid() ? "YES" : "NO");
-            telemetry.addData("Num Tags", robot.vision.getNumTagsDetected());
+        // ========== TELEMETRY ==========
+        updateTelemetry();
+
+        // Dashboard field drawing
+        TelemetryPacket packet = new TelemetryPacket();
+        
+        // Draw robot at odometry position (blue)
+        org.firstinspires.ftc.teamcode.utils.DashboardUtil.drawRobot(packet, robot.drive.getPose());
+        
+        // Draw absolute position if available (green circle + line for heading)
+        if (hasValidPosition) {
+            double absX = robot.drive.getAbsoluteX();
+            double absY = robot.drive.getAbsoluteY();
+            double absHeading = robot.drive.getAbsoluteHeading();
             
-            int tagId = robot.vision.getDetectedTagId();
-            boolean canSeeTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
-            telemetry.addData("CAN SEE TAG?", canSeeTag ? "YES ✓" : "NO ✗");
-            telemetry.addData("Current Tag", tagId == -1 ? "NONE" : tagId);
-            telemetry.addData("TX", String.format("%.1f°", robot.vision.getTx()));
-            telemetry.addData("Has Abs Pos", robot.drive.hasAbsolutePosition() ? "YES" : "NO");
+            // Add to packet telemetry
+            packet.put("Abs X", String.format("%.1f", absX));
+            packet.put("Abs Y", String.format("%.1f", absY));
+            packet.put("Abs Heading", String.format("%.1f°", Math.toDegrees(absHeading)));
             
-            if (robot.drive.hasAbsolutePosition()) {
-                telemetry.addData("Abs X", String.format("%.1f in", robot.drive.getAbsoluteX()));
-                telemetry.addData("Abs Y", String.format("%.1f in", robot.drive.getAbsoluteY()));
-                telemetry.addData("Abs Heading", String.format("%.1f°", Math.toDegrees(robot.drive.getAbsoluteHeading())));
+            // Draw green circle at absolute position
+            packet.fieldOverlay()
+                    .setStroke("#00FF00")
+                    .setStrokeWidth(2)
+                    .strokeCircle(absX, absY, 4);
+            
+            // Draw heading line
+            double lineLen = 8;
+            double endX = absX + lineLen * Math.cos(absHeading);
+            double endY = absY + lineLen * Math.sin(absHeading);
+            packet.fieldOverlay()
+                    .setStroke("#00FF00")
+                    .strokeLine(absX, absY, endX, endY);
+            
+            // Draw line to goal (red dashed)
+            packet.fieldOverlay()
+                    .setStroke("#FF0000")
+                    .setStrokeWidth(1)
+                    .strokeLine(absX, absY, GOAL_X, GOAL_Y);
+        }
+        
+        // Draw goal position (red circle)
+        packet.fieldOverlay()
+                .setStroke("#FF0000")
+                .setFill("#FF000044")
+                .fillCircle(GOAL_X, GOAL_Y, 3);
+        
+        FtcDashboard.getInstance().sendTelemetryPacket(packet);
+    }
+    
+    /**
+     * Update robot's absolute position from vision or odometry
+     */
+    private void updateAbsolutePosition() {
+        if (robot.vision == null || robot.turret == null) return;
+        
+        int tagId = robot.vision.getDetectedTagId();
+        boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
+        
+        if (isGoalTag) {
+            double turretAngle = robot.turret.isCalibrated() ? robot.turret.getAngleRadians() : 0;
+            boolean success = robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
+            if (success) {
+                hasValidPosition = true;
             }
         } else {
-            telemetry.addLine("Vision NOT AVAILABLE!");
+            robot.drive.updateAbsolutePositionFromOdometry();
+        }
+    }
+    
+    // Debug values for telemetry
+    private double debugGoalFieldAngle = 0;  // x from atan equation
+    private double debugTurnRight = 0;       // heading - x
+    private double debugTurnLeft = 0;        // -((360 - heading) + x)
+    private double debugChosenAngle = 0;     // final choice
+    
+    /**
+     * Calculate turret target angle using simplified geometry:
+     * 
+     * STEP 1: Get chassis heading (0-360°) and absolute position (x, y)
+     * STEP 2: Solve tan(angle) = (140 - y) / (140 - x) → angle = atan2(dy, dx)
+     * STEP 3: Calculate two options:
+     *         - Turn RIGHT: heading - angle
+     *         - Turn LEFT:  -((360 - heading) + angle)
+     * STEP 4: Choose the option within limits; if both valid, pick smaller |angle|
+     * 
+     * Turret coord: positive = RIGHT, negative = LEFT
+     * Limits: -145° to +240°
+     */
+    private void calculateAndApplyTurretAngle() {
+        if (!hasValidPosition || robot.turret == null) return;
+        
+        // === STEP 1: Get chassis heading and position ===
+        double robotX = robot.drive.getAbsoluteX();
+        double robotY = robot.drive.getAbsoluteY();
+        
+        // Heading in [0, 360)
+        double heading = Math.toDegrees(robot.drive.getAbsoluteHeading());
+        heading = Util.normalizeAngleDegrees0To360(heading);
+        
+        // === STEP 2: Solve for goal field angle ===
+        // tan(x) = (140 - robotY) / (140 - robotX)
+        // x = atan2(dy, dx)
+        double dx = GOAL_X - robotX;  // 140 - robotX
+        double dy = GOAL_Y - robotY;  // 140 - robotY
+        double x = Math.toDegrees(Math.atan2(dy, dx));
+        // Normalize x to [0, 360)
+        x = Util.normalizeAngleDegrees0To360(x);
+        
+        // === STEP 3: Calculate two options ===
+        // Turn RIGHT (positive turret angle): heading - x
+        double turnRight = heading - x;
+        
+        // Turn LEFT (negative turret angle): -((360 - heading) + x)
+        double turnLeft = -((360.0 - heading) + x);
+        
+        // Save for telemetry
+        debugGoalFieldAngle = x;
+        debugTurnRight = turnRight;
+        debugTurnLeft = turnLeft;
+        
+        // === STEP 4: Choose the best option ===
+        boolean rightInLimits = (turnRight >= MIN_TURRET_ANGLE && turnRight <= MAX_TURRET_ANGLE);
+        boolean leftInLimits = (turnLeft >= MIN_TURRET_ANGLE && turnLeft <= MAX_TURRET_ANGLE);
+        
+        double targetAngle;
+        if (rightInLimits && leftInLimits) {
+            // Both valid - pick the one with smaller absolute value (shorter turn)
+            targetAngle = (Math.abs(turnRight) <= Math.abs(turnLeft)) ? turnRight : turnLeft;
+        } else if (rightInLimits) {
+            targetAngle = turnRight;
+        } else if (leftInLimits) {
+            targetAngle = turnLeft;
+        } else {
+            // Neither in limits - clamp turnRight to nearest limit
+            targetAngle = turnRight;
+            if (targetAngle < MIN_TURRET_ANGLE) targetAngle = MIN_TURRET_ANGLE;
+            if (targetAngle > MAX_TURRET_ANGLE) targetAngle = MAX_TURRET_ANGLE;
         }
         
-        // === TURRET STATUS ===
-        if (robot.turret != null) {
-            telemetry.addLine("========== TURRET ==========");
-            telemetry.addData("Aim State", aimState.toString());
-            telemetry.addData("Has Lock Pos", hasLockedPosition ? "YES" : "NO");
-            if (aimState == AimState.INERTIAL_TRACKING) {
-                double dH = Math.toDegrees(currentOdoHeading - lockedOdoHeading);
-                telemetry.addData("Delta Heading", String.format("%.1f°", dH));
-            }
-            telemetry.addData("Calibrated", robot.turret.isCalibrated() ? "YES" : "NO");
-            telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
-            telemetry.addData("Target", String.format("%.1f°", robot.turret.getTargetAngle()));
-            telemetry.addData("Manual Offset", String.format("%.1f°", robot.turret.getManualOffset()));
-            telemetry.addData("Goal", String.format("(%.0f, %.0f)", TurretConstants.redGoalX, TurretConstants.redGoalY));
-            telemetry.addData("Disabled", robot.turret.isDisabled() ? "YES!" : "NO");
-            telemetry.addLine("GP1 A = Scan | GP2 ←→ = Offset");
-        }
+        debugChosenAngle = targetAngle;
         
-        telemetry.addLine("========== ODOMETRY ==========");
-        telemetry.addData("Odo X", String.format("%.2f in", pose.getX(DistanceUnit.INCH)));
-        telemetry.addData("Odo Y", String.format("%.2f in", pose.getY(DistanceUnit.INCH)));
-        telemetry.addData("Odo Heading", String.format("%.1f°", Math.toDegrees(pose.getHeading(AngleUnit.RADIANS))));
-        
-        // --- Intake/Shooter ---
+        // Apply to turret
+        robot.turret.enableSoftLock(targetAngle);
+    }
+    
+    /**
+     * Handle intake/shooter controls
+     */
+    private void handleIntakeShooter() {
         boolean shooterAccelerationPressed =
                 gamepadEx1.getButton(GamepadKeys.Button.LEFT_BUMPER) ||
-                        gamepadEx1.getButton(GamepadKeys.Button.RIGHT_BUMPER) ||
-                        gamepadEx1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) >= 0.3;
+                gamepadEx1.getButton(GamepadKeys.Button.RIGHT_BUMPER) ||
+                gamepadEx1.getTrigger(GamepadKeys.Trigger.RIGHT_TRIGGER) >= 0.3;
         boolean feedPressed =
                 shooterAccelerationPressed &&
-                        gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
+                gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setShooting(feedPressed);
+        
         boolean intakeAccelerationPressed =
                 gamepadEx1.getTrigger(GamepadKeys.Trigger.LEFT_TRIGGER) >= 0.3;
         robot.intake.setFastIntaking(intakeAccelerationPressed);
+    }
+    
+    /**
+     * Update telemetry display
+     */
+    private void updateTelemetry() {
+        Pose2D pose = robot.drive.getPose();
         
-        // --- Shooter Status ---
+        // === STATE ===
+        telemetry.addLine("========== STATE ==========");
+        telemetry.addData("Aim State", aimState.toString());
+        telemetry.addData("Has Position", hasValidPosition ? "YES" : "NO");
+        telemetry.addData("Is Flipping", isFlipping ? "YES" : "NO");
+        
+        // === VISION ===
+        telemetry.addLine("========== VISION ==========");
+        if (robot.vision != null) {
+            int tagId = robot.vision.getDetectedTagId();
+            boolean canSee = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
+            telemetry.addData("CAN SEE TAG", canSee ? "YES ✓" : "NO ✗");
+            telemetry.addData("Tag ID", tagId == -1 ? "NONE" : tagId);
+            telemetry.addData("TX", String.format("%.1f°", robot.vision.getTx()));
+        }
+        
+        // === POSITION ===
+        telemetry.addLine("========== POSITION ==========");
+        if (hasValidPosition) {
+            telemetry.addData("Abs X", String.format("%.1f in", robot.drive.getAbsoluteX()));
+            telemetry.addData("Abs Y", String.format("%.1f in", robot.drive.getAbsoluteY()));
+            telemetry.addData("Abs Heading", String.format("%.1f°", Math.toDegrees(robot.drive.getAbsoluteHeading())));
+        } else {
+            telemetry.addLine("Waiting for tag...");
+        }
+        
+        // === TURRET ===
+        if (robot.turret != null) {
+            telemetry.addLine("========== TURRET ==========");
+            telemetry.addData("Current Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
+            telemetry.addData("Target Angle", String.format("%.1f°", robot.turret.getTargetAngle()));
+            telemetry.addData("Goal Pos", String.format("X=%.0f, Y=%.0f", GOAL_X, GOAL_Y));
+            
+            // === AIM DEBUG (Simplified geometry) ===
+            if (hasValidPosition && aimState == AimState.INERTIAL_NAVIGATION) {
+                telemetry.addLine("---------- AIM DEBUG ----------");
+                telemetry.addData("Goal Angle (x)", String.format("%.1f°", debugGoalFieldAngle));
+                telemetry.addData("Turn RIGHT", String.format("%.1f° %s", 
+                        debugTurnRight,
+                        (debugTurnRight >= MIN_TURRET_ANGLE && debugTurnRight <= MAX_TURRET_ANGLE) ? "✓" : "✗"));
+                telemetry.addData("Turn LEFT", String.format("%.1f° %s", 
+                        debugTurnLeft,
+                        (debugTurnLeft >= MIN_TURRET_ANGLE && debugTurnLeft <= MAX_TURRET_ANGLE) ? "✓" : "✗"));
+                telemetry.addData("CHOSEN", String.format("%.1f°", debugChosenAngle));
+            }
+        }
+        
+        // === ODOMETRY ===
+        telemetry.addLine("========== ODOMETRY ==========");
+        telemetry.addData("X", String.format("%.1f in", pose.getX(DistanceUnit.INCH)));
+        telemetry.addData("Y", String.format("%.1f in", pose.getY(DistanceUnit.INCH)));
+        telemetry.addData("Heading", String.format("%.1f°", Math.toDegrees(pose.getHeading(AngleUnit.RADIANS))));
+        
+        // === SHOOTER ===
         telemetry.addLine("========== SHOOTER ==========");
         telemetry.addData("READY", robot.shooter.isShooterAtSetPoint());
-        telemetry.addData("STATE", robot.shooter.shooterState);
-        telemetry.addData("Velocity", String.format("%.0f TPS", robot.shooter.getVelocity()));
+        telemetry.addData("State", robot.shooter.shooterState);
         
-        // --- Emergency Disable ---
-        telemetry.addLine("========== EMERGENCY (GP2) ==========");
-        telemetry.addData("Intake", robot.intake.isDisabled() ? "DISABLED" : "OK");
-        telemetry.addData("Shooter", robot.shooter.isDisabled() ? "DISABLED" : "OK");
-        if (robot.turret != null) {
-            telemetry.addData("Turret", robot.turret.isDisabled() ? "DISABLED" : "OK");
+        // === CONTROLS ===
+        telemetry.addLine("========== CONTROLS ==========");
+        if (aimState == AimState.LOCKED_AT_ZERO) {
+            telemetry.addLine("See tag + A → Start auto-aim");
+        } else {
+            telemetry.addLine("A → Return to 0° (stop auto-aim)");
         }
         
         telemetry.update();
-
-        // Dashboard
-        TelemetryPacket packet = new TelemetryPacket();
-        org.firstinspires.ftc.teamcode.utils.DashboardUtil.drawRobot(packet, pose);
-        FtcDashboard.getInstance().sendTelemetryPacket(packet);
     }
 }
-
-// Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.

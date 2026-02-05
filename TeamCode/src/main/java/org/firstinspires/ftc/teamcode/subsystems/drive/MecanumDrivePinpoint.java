@@ -607,9 +607,10 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     
     /**
      * Gets the absolute heading in field (radians).
+     * Returns value in [0, 2π) - NO NEGATIVE ANGLES (Pedro Pathing convention).
      */
     public double getAbsoluteHeading() {
-        return absoluteHeading;
+        return Util.normalizeAngleRadians0To2Pi(absoluteHeading);
     }
     
     /**

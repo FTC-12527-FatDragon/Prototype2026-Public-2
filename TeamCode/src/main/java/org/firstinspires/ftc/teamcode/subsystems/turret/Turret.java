@@ -1054,30 +1054,14 @@ public class Turret extends SubsystemBase {
         switch (lockMode) {
             case SOFT_LOCK:
                 // Position hold mode - maintain fixed target angle
+                // NOTE: Turret coordinate system is LINEAR (has physical limits), NOT circular!
+                // So we should NOT normalize angles or find "shortest path" - just go directly to target
                 if (isCalibrated) {
                     double error = targetAngleDeg - currentAngle;
                     
-                    // Check if current position is out of bounds
-                    boolean softLockOutOfBounds = currentAngle < TurretConstants.minAngleDeg || 
-                                                   currentAngle > TurretConstants.maxAngleDeg;
-                    
-                    // Normalize error for shortest VALID path (unless out of bounds)
-                    if (!softLockOutOfBounds) {
-                        double normalizedError = error;
-                        while (normalizedError > 180) normalizedError -= 360;
-                        while (normalizedError < -180) normalizedError += 360;
-                        
-                        // Check if the shorter path stays within physical limits
-                        double shortestPathTarget = currentAngle + normalizedError;
-                        if (shortestPathTarget >= TurretConstants.minAngleDeg && 
-                            shortestPathTarget <= TurretConstants.maxAngleDeg) {
-                            error = normalizedError;
-                        }
-                        // Otherwise use original longer path
-                    }
-                    
-                    // Recalculate effective target based on (possibly normalized) error
-                    double effectiveTarget = currentAngle + error;
+                    // Use direct error - no normalization!
+                    // The target angle is already clamped to limits by the caller (SoloTest)
+                    double effectiveTarget = targetAngleDeg;
                     
                     if (Math.abs(error) <= TurretConstants.positionTolerance) {
                         outputPower = 0;

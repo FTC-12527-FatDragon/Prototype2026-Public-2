@@ -37,36 +37,21 @@ public class Shooter extends SubsystemBase {
     // Emergency disable flag (controlled by gamepad2)
     private boolean disabled = false;
     
-    // Stability check: must be at setpoint for 0.3s before firing
-    private long stableStartTime = 0;
-    private boolean wasAtSetpoint = false;
-    private static final long STABLE_TIME_MS = 300;  // 0.3 seconds
-    
-    // Firing boost: increase power 0.2s after transit opens
+    // ==================== FIRING BOOST ====================
+    // When transit is open (firing), apply extra power to compensate for ball drag
+    private boolean isTransitFiring = false;
     private long firingStartTime = 0;
-    private boolean isFiring = false;
-    private static final long FIRING_BOOST_DELAY_MS = 200;  // 0.2 seconds
-    private static final long FIRING_BOOST_RAMP_MS = 1000;        // Ramp duration (1 second)
-    // SLOW (close shot) linear boost: 30% → 45%
-    private static final double FIRING_BOOST_SLOW_START = 0.30;
-    private static final double FIRING_BOOST_SLOW_END = 0.45;
-    // MID linear boost: 27% → 38%
-    private static final double FIRING_BOOST_MID_START = 0.27;
-    private static final double FIRING_BOOST_MID_END = 0.38;
-    // FAST (far shot) linear boost: 25% → 40%
-    private static final double FIRING_BOOST_FAST_START = 0.25;
-    private static final double FIRING_BOOST_FAST_END = 0.40;
-    private static final long FIRING_BOOST_MAX_DURATION_MS = 1000;  // Max 1 second boost
-    private double lockedPower = 0;  // Power locked when boost activates
-    private boolean boostActive = false;  // True when using locked power + boost
-    private ShooterState lastShooterState = ShooterState.STOP;  // Track state changes
-    private boolean transitFiring = false;  // True when LT + bumper pressed (external control)
     
-    // 50ms window velocity calculation (for external encoder stability)
-    private int windowStartPos = 0;
-    private long windowStartTime = 0;
-    private double calculatedVelocity = 0;
-    private static final long VELOCITY_WINDOW_MS = 50;  // Calculate velocity every 50ms
+    // Linear boost: power increases from START to END over BOOST_DURATION_MS
+    private static final long BOOST_DURATION_MS = 1000;  // 1 second ramp
+    
+    // Boost amounts by state (start%, end%)
+    private static final double BOOST_START_SLOW = 0.30;
+    private static final double BOOST_END_SLOW = 0.45;
+    private static final double BOOST_START_MID = 0.27;
+    private static final double BOOST_END_MID = 0.38;
+    private static final double BOOST_START_FAST = 0.25;
+    private static final double BOOST_END_FAST = 0.40;
 
     /**
      * Constructor for Shooter.
@@ -185,89 +170,83 @@ public class Shooter extends SubsystemBase {
     public void toggleDisabled() {
         disabled = !disabled;
     }
-
+    
     /**
-     * Gets the current velocity of the shooter (calculated via 50ms window).
-     * @return Velocity in ticks per second (always positive).
+     * Sets the transit firing state for boost activation.
+     * Call with true when transit opens (start firing), false when transit closes.
+     * @param firing True to start boost, false to end boost.
      */
-    public double getVelocity() {
-        return calculatedVelocity;
+    public void setTransitFiring(boolean firing) {
+        if (firing && !isTransitFiring) {
+            // Starting to fire - reset boost timer
+            firingStartTime = System.currentTimeMillis();
+        }
+        isTransitFiring = firing;
     }
     
     /**
-     * Calculates boost amount based on shooter state and time since boost started.
-     * All modes use linear ramp over 1 second:
-     * - SLOW: 30% → 45%
-     * - MID:  27% → 38%
-     * - FAST: 25% → 40%
-     * @return Boost amount (0.0 to 1.0)
+     * Checks if transit is currently firing (boost active).
+     * @return True if firing.
+     */
+    public boolean isTransitFiring() {
+        return isTransitFiring;
+    }
+    
+    /**
+     * Calculates the current boost amount based on linear ramping.
+     * @return Boost power to add (0.0 to ~0.45)
      */
     private double calculateBoostAmount() {
-        // Calculate progress (0 to 1) based on elapsed time
-        long boostElapsed = System.currentTimeMillis() - firingStartTime - FIRING_BOOST_DELAY_MS;
-        boostElapsed = Math.max(0, boostElapsed);  // Clamp to 0 if negative
-        double progress = Math.min(1.0, (double) boostElapsed / FIRING_BOOST_RAMP_MS);
+        if (!isTransitFiring) return 0;
+        
+        long elapsed = System.currentTimeMillis() - firingStartTime;
+        double progress = Math.min(1.0, (double) elapsed / BOOST_DURATION_MS);
         
         double startBoost, endBoost;
-        if (shooterState == ShooterState.SLOW) {
-            startBoost = FIRING_BOOST_SLOW_START;
-            endBoost = FIRING_BOOST_SLOW_END;
-        } else if (shooterState == ShooterState.FAST) {
-            startBoost = FIRING_BOOST_FAST_START;
-            endBoost = FIRING_BOOST_FAST_END;
-        } else {  // MID
-            startBoost = FIRING_BOOST_MID_START;
-            endBoost = FIRING_BOOST_MID_END;
+        switch (shooterState) {
+            case SLOW:
+                startBoost = BOOST_START_SLOW;
+                endBoost = BOOST_END_SLOW;
+                break;
+            case MID:
+                startBoost = BOOST_START_MID;
+                endBoost = BOOST_END_MID;
+                break;
+            case FAST:
+                startBoost = BOOST_START_FAST;
+                endBoost = BOOST_END_FAST;
+                break;
+            default:
+                return 0;
         }
         
+        // Linear interpolation: start + (end - start) * progress
         return startBoost + (endBoost - startBoost) * progress;
     }
     
     /**
-     * Gets boost status for debugging.
-     * @return String describing current boost state
+     * Gets the current boost status as a string for telemetry.
+     * @return Boost status string (e.g., "OFF", "SLOW 32%", etc.)
      */
     public String getBoostStatus() {
-        if (boostActive) {
-            double boostAmount = calculateBoostAmount();
-            // All modes now use linear ramping
-            return "ACTIVE (+" + (int)(boostAmount * 100) + "% ramping)";
-        } else if (isFiring && transitFiring) {
-            long elapsed = System.currentTimeMillis() - firingStartTime;
-            if (elapsed < FIRING_BOOST_DELAY_MS) {
-                return "WAITING (" + elapsed + "/" + FIRING_BOOST_DELAY_MS + "ms)";
-            }
-        } else if (isFiring) {
-            return "isFiring (no LT+bumper)";
-        } else if (transitFiring) {
-            return "transitFiring (no isFiring)";
-        }
-        return "OFF";
-    }
-    
-    /**
-     * Updates velocity using 50ms window calculation.
-     * Called every loop iteration, but only recalculates when window expires.
-     * Always returns positive velocity (shooter spins one direction).
-     */
-    private void updateVelocity() {
-        int currentPos = rightShooter.getCurrentPosition();
-        long currentTime = System.currentTimeMillis();
-        long elapsed = currentTime - windowStartTime;
+        if (!isTransitFiring) return "OFF";
         
-        if (elapsed >= VELOCITY_WINDOW_MS) {
-            // Calculate velocity: |deltaPos| / deltaTime
-            int deltaPos = Math.abs(currentPos - windowStartPos);  // Always positive
-            double rawVelocity = deltaPos * 1000.0 / elapsed;      // TPS
-            
-            // Light smoothing
-            calculatedVelocity = ShooterConstants.filterAlpha * rawVelocity 
-                    + (1 - ShooterConstants.filterAlpha) * calculatedVelocity;
-            
-            // Reset window
-            windowStartPos = currentPos;
-            windowStartTime = currentTime;
-        }
+        double boost = calculateBoostAmount();
+        long elapsed = System.currentTimeMillis() - firingStartTime;
+        
+        return String.format("%s %.0f%% (%dms)", 
+                shooterState.toString(), 
+                boost * 100, 
+                elapsed);
+    }
+
+    /**
+     * Gets the current velocity of the shooter.
+     * @return Velocity in ticks per second (always positive).
+     */
+    public double getVelocity() {
+        // Use Math.abs() to ensure always positive regardless of encoder direction
+        return Math.abs(rightShooter.getVelocity());
     }
 
     /**
@@ -279,20 +258,6 @@ public class Shooter extends SubsystemBase {
     }
 
     /**
-     * Sets whether transit is actively firing (LT + bumper pressed).
-     * This controls when firing boost can activate.
-     * @param firing True when actively firing (LT + bumper held)
-     */
-    public void setTransitFiring(boolean firing) {
-        this.transitFiring = firing;
-        // If stopped firing, reset boost
-        if (!firing) {
-            boostActive = false;
-            lockedPower = 0;
-        }
-    }
-    
-    /**
      * Checks if the shooter has reached its target velocity.
      * Considers adaptiveVelocity if set.
      * @return True if current velocity is within epsilon of target.
@@ -303,35 +268,16 @@ public class Shooter extends SubsystemBase {
         
         // If using state velocity and state is STOP, return false
         if (adaptiveVelocity == 0 && shooterState == ShooterState.STOP) {
-            wasAtSetpoint = false;  // Reset stability tracking
-            stableStartTime = 0;
-            isFiring = false;  // Stop firing boost
-            firingStartTime = 0;
             return false;
         }
         
         // Check if current velocity is close to target velocity
-        // FAST mode uses tighter tolerance for better accuracy
-        double epsilon = (shooterState == ShooterState.FAST) ? 12000 : ShooterConstants.shooterEpsilon;
-        boolean atSetpoint = Util.epsilonEqual(
-                calculatedVelocity,
+        // Use Math.abs() to ensure always positive regardless of encoder direction
+        return Util.epsilonEqual(
+                Math.abs(rightShooter.getVelocity()),
                 targetVel,
-                epsilon
+                ShooterConstants.shooterEpsilon
         );
-        
-        // No stability delay - fire immediately when at setpoint
-        if (atSetpoint) {
-            // Start firing boost timer when first reaching setpoint
-            if (!isFiring) {
-                isFiring = true;
-                firingStartTime = System.currentTimeMillis();
-            }
-            return true;
-        } else {
-            // Not at setpoint
-            // Keep firing boost active if already firing (allow continuous fire during boost)
-            return isFiring;
-        }
     }
 
 
@@ -351,117 +297,62 @@ public class Shooter extends SubsystemBase {
             return;
         }
         
-        // Initialize velocity window on first call
-        if (windowStartTime == 0) {
-            windowStartPos = rightShooter.getCurrentPosition();
-            windowStartTime = System.currentTimeMillis();
-        }
-        
-        // Update velocity using 50ms window (external encoder)
-        updateVelocity();
-        
         // Control loop runs always (even in STOP state) to maintain idle speed if set
-        double currentVel = calculatedVelocity;  // Always positive
+        // Use Math.abs() to ensure always positive regardless of encoder direction
+        double currentVel = Math.abs(rightShooter.getVelocity());
         
         // Use adaptive velocity if set, otherwise use state velocity
         double targetVel = (adaptiveVelocity != 0) ? adaptiveVelocity : shooterState.shooterVelocity;
         double power;
-        
-        // Check for state change (档位切换) - reset boost
-        if (shooterState != lastShooterState) {
-            boostActive = false;
-            lockedPower = 0;
-            lastShooterState = shooterState;
-        }
-        
-        // Check boost timeout (max 1 second)
-        if (boostActive && (System.currentTimeMillis() - firingStartTime) > (FIRING_BOOST_DELAY_MS + FIRING_BOOST_MAX_DURATION_MS)) {
-            boostActive = false;
-            lockedPower = 0;
-        }
-        
-        // If not actively firing (LT + bumper), reset boost
-        if (!transitFiring) {
-            boostActive = false;
-            lockedPower = 0;
-        }
 
         // =================================================================
-        // OPTION 1: PSEUDO CLOSED-LOOP - ACTIVE (Optimized)
+        // OPTION 1: PSEUDO CLOSED-LOOP (Current Implementation)
+        // Pros: Fast acceleration, simple, with motor braking
+        // Cons: Not smooth, no fine control
         // =================================================================
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
+            // Idle mode: Use fixed open-loop power, no closed-loop control
             power = ShooterConstants.idlePower;
-            boostActive = false;  // Reset boost when STOP
-            lockedPower = 0;
-        } else if (boostActive) {
-            // BOOST MODE: Use locked power + boost, bypass pseudo closed-loop
-            // FAST mode uses linear ramp, others use fixed boost
-            double boostAmount = calculateBoostAmount();
-            power = Math.min(1.0, lockedPower + boostAmount);
         } else {
-            // NORMAL MODE: Pseudo closed-loop control
-            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;
-            double deadband = 15000;  // Stability zone: ±15000 TPS around target
-            double error = targetVel - currentVel;
+            // Pseudo Closed-loop with Feedforward + Motor Braking
+            // Note: Velocities are positive (e.g., Target: 1500, Current: 1200)
+            // 
+            // Three states:
+            // 1. Too slow (currentVel < targetVel): Full power to accelerate
+            // 2. Too fast by > 200 TPS (currentVel > targetVel + 200): Reverse motor to brake
+            // 3. Near target: Feedforward power to maintain
             
-            // Calculate feedforward with correction factor (motors don't reach theoretical max)
-            double feedforward = (targetVel / ShooterConstants.maxVelocityTPS) * 1.3;
-            feedforward = Math.min(feedforward, 0.95);  // Cap at 95%
+            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;  // 200 TPS
             
-            // Mode-specific parameters
-            boolean isMidMode = (shooterState == ShooterState.MID);
-            double approachPower = isMidMode ? 0.7 : 0.85;  // MID uses gentler approach
-            // Reduced power for overspeed (no reverse, just lower power to let motor slow naturally)
-            double reducedPower = feedforward * 0.7;  // 70% of feedforward when overspeed
-            
-            if (error > deadband) {
-                // Below target by more than deadband: accelerate
-                if (error > 50000) {
-                    power = 1.0;  // Far from target: full power
-                } else {
-                    power = approachPower;  // Close to target: reduced power for smoother approach
-                }
-            } else if (error < -overspeedThreshold) {
-                // Overspeed beyond threshold: reduce power (no reverse braking)
-                power = reducedPower;
+            if (currentVel < targetVel) {
+                // Too slow, apply max power to accelerate
+                power = 1.0;
+            } else if (currentVel > targetVel + overspeedThreshold) {
+                // Too fast by more than threshold, apply reverse power to brake
+                // Since we don't have physical brake, use motor reverse as brake
+                power = -ShooterConstants.motorBrakePower;
             } else {
-                // Within deadband or slightly over: use feedforward to maintain
-                power = feedforward;
+                // Near target speed, use feedforward to maintain
+                // Ratio = target / maxVelocityTPS
+                power = targetVel / ShooterConstants.maxVelocityTPS;
             }
             
-            // Check if boost should activate (0.2s after firing starts, only when LT + bumper held)
-            if (isFiring && transitFiring && (System.currentTimeMillis() - firingStartTime) > FIRING_BOOST_DELAY_MS) {
-                // Lock current power and activate boost mode
-                lockedPower = power;
-                boostActive = true;
-                // FAST mode starts at 25% and ramps to 40%, others use fixed boost
-                double boostAmount = calculateBoostAmount();
-                power = Math.min(1.0, lockedPower + boostAmount);
+            // Apply firing boost if transit is open
+            double boost = calculateBoostAmount();
+            if (boost > 0) {
+                power = Math.min(1.0, power + boost);
             }
         }
         
         // =================================================================
-        // OPTION 2: TRUE PIDF VELOCITY CONTROL (Disabled)
+        // OPTION 2: TRUE PIDF VELOCITY CONTROL (Uncomment to use)
+        // Pros: Smooth, precise velocity control
+        // Cons: Requires tuning kP, kI, kD, kF
+        // 
+        // To switch: Comment out OPTION 1 above, uncomment below
         // =================================================================
         /*
-        velocityPIDF.setPIDF(ShooterConstants.kP, ShooterConstants.kI, ShooterConstants.kD, ShooterConstants.kF);
-        if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
-            power = ShooterConstants.idlePower;
-            velocityPIDF.reset();
-        } else {
-            double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
-            power = Math.max(0, Math.min(1, pidfOutput));
-        }
-        */
-        
-        // =================================================================
-        // OPTION 3: HYBRID (Pseudo Closed-loop + PIDF) - Disabled
-        // Far from target: Full power acceleration (fast response)
-        // Near target: PIDF fine control (precision)
-        // Overspeed: Motor brake
-        // =================================================================
-        /*
-        // Update PIDF coefficients (allows Dashboard tuning)
+        // Update PIDF coefficients from constants (allows Dashboard tuning)
         velocityPIDF.setPIDF(
                 ShooterConstants.kP,
                 ShooterConstants.kI,
@@ -470,12 +361,19 @@ public class Shooter extends SubsystemBase {
         );
         
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
-            // Idle mode: fixed open-loop power
+            // Idle mode: Use fixed open-loop power, no closed-loop control
             power = ShooterConstants.idlePower;
-            velocityPIDF.reset();
+            velocityPIDF.reset();  // Reset integrator when idle
         } else {
-            // Pure PIDF velocity control (tuned parameters from ShooterPIDTuner)
+            // PIDF Velocity Control
+            // Note: currentVel and targetVel are both positive
+            // PIDF calculates: error = setpoint - measurement = targetVel - currentVel
+            // Output = kP*error + kI*integral + kD*derivative + kF*setpoint
+            
+            // Calculate PIDF output
             double pidfOutput = velocityPIDF.calculate(currentVel, targetVel);
+            
+            // Clamp output to [0, 1] (shooter only runs one direction)
             power = Math.max(0, Math.min(1, pidfOutput));
         }
         */

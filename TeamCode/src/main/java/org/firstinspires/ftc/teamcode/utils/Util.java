@@ -56,6 +56,30 @@ public class Util {
     }
     
     /**
+     * Normalizes an angle to the range [0, 2π) radians.
+     * NO NEGATIVE ANGLES - follows Pedro Pathing coordinate system.
+     * @param angle Angle in radians.
+     * @return Normalized angle in [0, 2π) radians.
+     */
+    public static double normalizeAngleRadians0To2Pi(double angle) {
+        while (angle < 0) angle += 2 * Math.PI;
+        while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
+        return angle;
+    }
+    
+    /**
+     * Normalizes an angle to the range [0, 360) degrees.
+     * NO NEGATIVE ANGLES - follows Pedro Pathing coordinate system.
+     * @param angle Angle in degrees.
+     * @return Normalized angle in [0, 360) degrees.
+     */
+    public static double normalizeAngleDegrees0To360(double angle) {
+        while (angle < 0) angle += 360;
+        while (angle >= 360) angle -= 360;
+        return angle;
+    }
+    
+    /**
      * Converts Limelight Pose3D (meters, field-space) to Pinpoint Pose2D (inches).
      * Uses configurable offsets and axis swapping for easy tuning.
      *
