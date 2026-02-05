@@ -52,6 +52,13 @@ public class Shooter extends SubsystemBase {
     private static final double BOOST_END_MID = 0.38;
     private static final double BOOST_START_FAST = 0.25;
     private static final double BOOST_END_FAST = 0.40;
+    
+    // ==================== MANUAL VELOCITY CALCULATION ====================
+    // REV Through Bore Encoder V2 (8192 CPR) - 50ms window for stable readings
+    private static final long VELOCITY_WINDOW_MS = 50;  // Calculate every 50ms
+    private int windowStartPos = 0;
+    private long windowStartTime = 0;
+    private double calculatedVelocity = 0;  // Manually calculated velocity (TPS)
 
     /**
      * Constructor for Shooter.
@@ -77,6 +84,10 @@ public class Shooter extends SubsystemBase {
                 ShooterConstants.kD,
                 ShooterConstants.kF
         );
+        
+        // Initialize manual velocity calculation window
+        windowStartPos = rightShooter.getCurrentPosition();
+        windowStartTime = System.currentTimeMillis();
     }
 
     /**
@@ -242,11 +253,12 @@ public class Shooter extends SubsystemBase {
 
     /**
      * Gets the current velocity of the shooter.
+     * Uses manual 50ms window calculation for stable REV V2 encoder readings.
      * @return Velocity in ticks per second (always positive).
      */
     public double getVelocity() {
-        // Use Math.abs() to ensure always positive regardless of encoder direction
-        return Math.abs(rightShooter.getVelocity());
+        // Return manually calculated velocity (always positive, stable)
+        return calculatedVelocity;
     }
 
     /**
@@ -272,9 +284,9 @@ public class Shooter extends SubsystemBase {
         }
         
         // Check if current velocity is close to target velocity
-        // Use Math.abs() to ensure always positive regardless of encoder direction
+        // Use manually calculated velocity (stable, always positive)
         return Util.epsilonEqual(
-                Math.abs(rightShooter.getVelocity()),
+                calculatedVelocity,
                 targetVel,
                 ShooterConstants.shooterEpsilon
         );
@@ -297,9 +309,28 @@ public class Shooter extends SubsystemBase {
             return;
         }
         
-        // Control loop runs always (even in STOP state) to maintain idle speed if set
-        // Use Math.abs() to ensure always positive regardless of encoder direction
-        double currentVel = Math.abs(rightShooter.getVelocity());
+        // ==================== MANUAL VELOCITY CALCULATION ====================
+        // REV Through Bore V2 encoder - 50ms window for stable readings
+        long currentTime = System.currentTimeMillis();
+        int currentPos = rightShooter.getCurrentPosition();
+        long elapsed = currentTime - windowStartTime;
+        
+        if (elapsed >= VELOCITY_WINDOW_MS) {
+            // Calculate velocity: deltaPos / deltaTime * 1000 = TPS
+            int deltaPos = Math.abs(currentPos - windowStartPos);  // Always positive
+            double rawVelocity = deltaPos * 1000.0 / elapsed;
+            
+            // Low-pass filter for smoothing
+            calculatedVelocity = ShooterConstants.filterAlpha * rawVelocity 
+                    + (1 - ShooterConstants.filterAlpha) * calculatedVelocity;
+            
+            // Reset window
+            windowStartPos = currentPos;
+            windowStartTime = currentTime;
+        }
+        
+        // Control loop uses manually calculated velocity (stable, always positive)
+        double currentVel = calculatedVelocity;
         
         // Use adaptive velocity if set, otherwise use state velocity
         double targetVel = (adaptiveVelocity != 0) ? adaptiveVelocity : shooterState.shooterVelocity;
@@ -314,25 +345,18 @@ public class Shooter extends SubsystemBase {
             // Idle mode: Use fixed open-loop power, no closed-loop control
             power = ShooterConstants.idlePower;
         } else {
-            // Pseudo Closed-loop with Feedforward + Motor Braking
+            // Pseudo Closed-loop with Feedforward (NO reverse braking)
             // Note: Velocities are positive (e.g., Target: 1500, Current: 1200)
             // 
-            // Three states:
+            // Two states:
             // 1. Too slow (currentVel < targetVel): Full power to accelerate
-            // 2. Too fast by > 200 TPS (currentVel > targetVel + 200): Reverse motor to brake
-            // 3. Near target: Feedforward power to maintain
-            
-            double overspeedThreshold = ShooterConstants.motorBrakeThreshold;  // 200 TPS
+            // 2. At or above target: Feedforward power to maintain (let it coast down naturally)
             
             if (currentVel < targetVel) {
                 // Too slow, apply max power to accelerate
                 power = 1.0;
-            } else if (currentVel > targetVel + overspeedThreshold) {
-                // Too fast by more than threshold, apply reverse power to brake
-                // Since we don't have physical brake, use motor reverse as brake
-                power = -ShooterConstants.motorBrakePower;
             } else {
-                // Near target speed, use feedforward to maintain
+                // At or above target speed, use feedforward to maintain
                 // Ratio = target / maxVelocityTPS
                 power = targetVel / ShooterConstants.maxVelocityTPS;
             }

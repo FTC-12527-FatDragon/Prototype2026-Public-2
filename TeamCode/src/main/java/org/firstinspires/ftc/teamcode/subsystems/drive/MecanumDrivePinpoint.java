@@ -431,25 +431,27 @@ public class MecanumDrivePinpoint extends SubsystemBase {
     // Limelight is 140.86521mm from turret center
     private static final double LIMELIGHT_OFFSET_INCHES = 140.86521 / 25.4;  // ~5.55"
     
+    // Tolerance for "turret at 0°" check (degrees)
+    private static final double TURRET_ZERO_TOLERANCE_DEG = 5.0;
+    
     /**
-     * Updates absolute field position from Vision with turret angle compensation.
+     * Updates absolute field position from Vision.
      * 
-     * Limelight is mounted on the turret, so its position relative to chassis center
-     * changes with turret angle. This method calculates:
-     * 1. Limelight position in field (from vision)
-     * 2. Limelight offset from chassis center (based on turret angle)
-     * 3. Chassis center = Limelight position - offset (transformed to field coordinates)
-     * 
-     * Coordinate system:
-     * - Chassis: +X = forward, +Y = right
-     * - Field: standard FTC field coordinates
-     * - Turret: 0° = forward, + = clockwise (right)
+     * IMPORTANT: Only updates position when turret is at 0° (aligned with chassis).
+     * This avoids heading calculation errors when turret is rotated.
+     * When turret is at 0°, Limelight heading = Robot heading (no compensation needed).
      * 
      * @param vision The Vision subsystem
-     * @param turretAngleRad Current turret angle in radians (0 = forward, + = right)
+     * @param turretAngleDeg Current turret angle in DEGREES (0 = forward, + = right)
      * @return true if vision update was successful
      */
-    public boolean updateAbsolutePositionFromVisionWithTurret(Vision vision, double turretAngleRad) {
+    public boolean updateAbsolutePositionFromVisionWithTurret(Vision vision, double turretAngleDeg) {
+        // ONLY update when turret is at 0° (aligned with chassis)
+        // This ensures Limelight heading = Robot heading
+        if (Math.abs(turretAngleDeg) > TURRET_ZERO_TOLERANCE_DEG) {
+            return false;  // Turret not at 0°, don't update
+        }
+        
         int tagId = vision.getDetectedTagId();
         boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
         
@@ -462,39 +464,30 @@ public class MecanumDrivePinpoint extends SubsystemBase {
             return false;
         }
         
-        // Step 1: Get Limelight's position in field (from vision)
-        // Note: visionPoseToPinpointPose returns what Limelight thinks is "robot" position
-        // But since Limelight is on turret, this is actually Limelight's position
+        // When turret is at 0°, Limelight is aligned with chassis
+        // So Limelight position/heading = Robot position/heading (with fixed offset)
         Pose2D limelightPose = Util.visionPoseToPinpointPose(visionPose);
         double limelightX = limelightPose.getX(DistanceUnit.INCH);
         double limelightY = limelightPose.getY(DistanceUnit.INCH);
-        double limelightHeading = limelightPose.getHeading(AngleUnit.RADIANS);  // This is LIMELIGHT's heading!
+        double robotHeading = limelightPose.getHeading(AngleUnit.RADIANS);
         
-        // Step 2: Calculate ROBOT heading from Limelight heading
-        // Limelight heading = Robot heading + Turret angle (in field coordinates)
-        // Therefore: Robot heading = Limelight heading - Turret angle
-        double robotHeading = Util.normalizeAngleRadians(limelightHeading - turretAngleRad);
+        // Calculate chassis center from Limelight position
+        // When turret is at 0°: Limelight is directly behind chassis center
+        // Offset = -TURRET_OFFSET + LIMELIGHT_OFFSET (along robot's forward axis)
+        double totalOffset = -TURRET_OFFSET_INCHES + LIMELIGHT_OFFSET_INCHES;
         
-        // Step 3: Calculate Limelight offset from chassis center (in chassis coordinates)
-        // Chassis coordinate system: +X = forward, +Y = right
-        // Turret center is TURRET_OFFSET behind chassis center (negative X)
-        // Limelight is LIMELIGHT_OFFSET from turret center at angle turretAngleRad
-        double limelightOffsetX_chassis = -TURRET_OFFSET_INCHES + LIMELIGHT_OFFSET_INCHES * Math.cos(turretAngleRad);
-        double limelightOffsetY_chassis = LIMELIGHT_OFFSET_INCHES * Math.sin(turretAngleRad);
-        
-        // Step 4: Transform offset from chassis coordinates to field coordinates
-        // Rotation by ROBOT heading (not Limelight heading!)
+        // Transform offset to field coordinates
         double cosH = Math.cos(robotHeading);
         double sinH = Math.sin(robotHeading);
-        double limelightOffsetX_field = limelightOffsetX_chassis * cosH - limelightOffsetY_chassis * sinH;
-        double limelightOffsetY_field = limelightOffsetX_chassis * sinH + limelightOffsetY_chassis * cosH;
+        double offsetX_field = totalOffset * cosH;
+        double offsetY_field = totalOffset * sinH;
         
-        // Step 5: Chassis center = Limelight position - offset
-        double rawX = limelightX - limelightOffsetX_field;
-        double rawY = limelightY - limelightOffsetY_field;
+        // Chassis center = Limelight position - offset
+        double rawX = limelightX - offsetX_field;
+        double rawY = limelightY - offsetY_field;
         double rawHeading = robotHeading;
         
-        // Step 6: Apply low-pass filter to reduce vision jitter
+        // Apply low-pass filter to reduce vision jitter
         if (!visionFilterInitialized) {
             // First reading - initialize filter with raw values
             absoluteX = rawX;

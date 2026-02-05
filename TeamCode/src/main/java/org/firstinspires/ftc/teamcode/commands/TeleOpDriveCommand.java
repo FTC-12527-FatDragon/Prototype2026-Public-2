@@ -75,10 +75,11 @@ public class TeleOpDriveCommand extends CommandBase {
             if (isGoalTag) {
                 // Vision update - with turret angle compensation
                 // Get turret angle (default to 0 if turret not available)
-                double turretAngle = (turret != null && turret.isCalibrated()) 
-                    ? turret.getAngleRadians() 
+                double turretAngleDeg = (turret != null && turret.isCalibrated()) 
+                    ? turret.getAngleDegrees() 
                     : 0;
-                drive.updateAbsolutePositionFromVisionWithTurret(vision, turretAngle);
+                // Pass turret angle in DEGREES (method only updates when turret is near 0°)
+                drive.updateAbsolutePositionFromVisionWithTurret(vision, turretAngleDeg);
             } else {
                 // Odometry dead-reckoning when no goal tag
                 drive.updateAbsolutePositionFromOdometry();

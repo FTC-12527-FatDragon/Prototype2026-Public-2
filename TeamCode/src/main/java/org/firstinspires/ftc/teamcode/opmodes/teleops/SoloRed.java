@@ -118,9 +118,10 @@ public class SoloRed extends CommandOpMode {
             boolean isGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
             
             if (isGoalTag) {
-                double turretAngle = (robot.turret != null && robot.turret.isCalibrated()) 
-                    ? robot.turret.getAngleRadians() : 0;
-                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
+                // Pass turret angle in DEGREES (method only updates when turret is near 0°)
+                double turretAngleDeg = (robot.turret != null && robot.turret.isCalibrated()) 
+                    ? robot.turret.getAngleDegrees() : 0;
+                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngleDeg);
             } else {
                 robot.drive.updateAbsolutePositionFromOdometry();
             }

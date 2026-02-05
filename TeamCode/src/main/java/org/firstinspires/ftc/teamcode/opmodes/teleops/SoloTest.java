@@ -218,8 +218,9 @@ public class SoloTest extends CommandOpMode {
         boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
         
         if (isGoalTag) {
-            double turretAngle = robot.turret.isCalibrated() ? robot.turret.getAngleRadians() : 0;
-            boolean success = robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
+            // Pass turret angle in DEGREES (method only updates when turret is near 0°)
+            double turretAngleDeg = robot.turret.isCalibrated() ? robot.turret.getAngleDegrees() : 0;
+            boolean success = robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngleDeg);
             if (success) {
                 hasValidPosition = true;
             }
