@@ -58,8 +58,8 @@ public class BlueNearInfinite extends AutoCommandBase {
     public static long TRANSIT_OPEN_MS = 1500;
     public static long TURRET_TIMEOUT_MS = 1000;
     
-    // Blue: +40° (aim right toward blue basket at 4, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = 40.0;
+    // Blue: +41.4° (aim right toward blue basket at 0, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = 41.4;
     
     @Override
     public Pose getStartPose() {

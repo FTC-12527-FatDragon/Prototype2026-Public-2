@@ -54,8 +54,8 @@ public class BlueNearAuto extends AutoCommandBase {
     public static long TRANSIT_OPEN_MS = 1500;            // Time to keep transit open for ball to exit
     public static long TURRET_TIMEOUT_MS = 1000;
     
-    // Blue Near: +40° (aim right toward blue basket at 4, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = 40.0;
+    // Blue Near: +41.4° (aim right toward blue basket at 0, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = 41.4;
     
     @Override
     public Pose getStartPose() {

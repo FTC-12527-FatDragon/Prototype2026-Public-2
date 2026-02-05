@@ -94,9 +94,9 @@ public class TurretConstants {
     // - Red basket at top-right corner (~140, 140)
     
     // Goal positions (field coordinates, inches) - BASKET CENTER
-    public static double blueGoalX = 4.0;     // Blue basket X (left side)
+    public static double blueGoalX = 0.0;     // Blue basket X (left side)
     public static double blueGoalY = 140.0;   // Blue basket Y (top)
-    public static double redGoalX = 140.0;    // Red basket X (right side)
+    public static double redGoalX = 144.0;    // Red basket X (right side)
     public static double redGoalY = 140.0;    // Red basket Y (top)
     
     // AprilTag positions (field coordinates, inches) - TAG POSITION (NOT basket!)

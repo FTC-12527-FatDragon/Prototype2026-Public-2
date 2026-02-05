@@ -62,11 +62,11 @@ public class DriveConstants {
     // - Y: 0 (bottom) to 144 (top)
     // - Heading: 0° = +X (right), 90° = +Y (up), 180° = left, 270° = down
     //
-    // Blue basket at top-left: (4, 140)
-    // Red basket at top-right: (140, 140)
-    public static double blueGoalX = 4;
+    // Blue basket at top-left: (0, 140)
+    // Red basket at top-right: (144, 140)
+    public static double blueGoalX = 0;
     public static double blueGoalY = 140;
-    public static double redGoalX = 140;
+    public static double redGoalX = 144;
     public static double redGoalY = 140;
 }
 

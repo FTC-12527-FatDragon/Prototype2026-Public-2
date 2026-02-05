@@ -55,8 +55,8 @@ public class RedNearAuto extends AutoCommandBase {
     public static long TRANSIT_OPEN_MS = 1500;
     public static long TURRET_TIMEOUT_MS = 1000;
     
-    // Red Near: -40° (aim left toward red basket at 140, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = -40.0;
+    // Red Near: -41.4° (aim left toward red basket at 140, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = -41.4;
     
     @Override
     public Pose getStartPose() {

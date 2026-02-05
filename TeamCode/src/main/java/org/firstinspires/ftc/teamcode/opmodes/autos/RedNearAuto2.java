@@ -62,8 +62,8 @@ public class RedNearAuto2 extends AutoCommandBase {
     public static long TURRET_SETTLE_MS = 300;
     
     // Turret angle when at SHOOT_POSE
-    // Red: -40° (aim left toward red basket at 140, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = -40.0;
+    // Red: -41.4° (aim left toward red basket at 140, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = -41.4;
     
     @Override
     public Pose getStartPose() {
