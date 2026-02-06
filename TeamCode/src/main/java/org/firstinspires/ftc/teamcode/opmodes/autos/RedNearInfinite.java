@@ -33,12 +33,12 @@ public class RedNearInfinite extends AutoCommandBase {
     
     // Key positions (Red side - mirrored at x=72)
     private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(36.5));
-    private static final Pose SHOOT_POSE = new Pose(94.77, 96.63, Math.toRadians(0));
+    private static final Pose SHOOT_POSE = new Pose(96.87, 99.21, Math.toRadians(0));
     
-    private static final Pose SAMPLE1_POSE = new Pose(135.21, 59.30, Math.toRadians(0));
+    private static final Pose SAMPLE1_POSE = new Pose(131.98, 58, Math.toRadians(0));
     private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);
     
-    private static final Pose INTAKE1_POSE = new Pose(127.55, 69.66, Math.toRadians(0));
+    private static final Pose INTAKE1_POSE = new Pose(126.74, 69.66, Math.toRadians(0));
     private static final Pose INTAKE1_CTRL = new Pose(117.11, 61.55);
     
     private static final Pose SAMPLE2_POSE = new Pose(131.92, 61.02, Math.toRadians(35));
@@ -51,7 +51,7 @@ public class RedNearInfinite extends AutoCommandBase {
     private static final Pose RN_SAMPLE2_CTRL1 = new Pose(80.38, 43.59);
     private static final Pose RN_SAMPLE2_CTRL2 = new Pose(73.67, 33.14);
     
-    private static final Pose RN_FINAL_POSE = new Pose(123.31, 64.06, Math.toRadians(0));
+    private static final Pose RN_FINAL_POSE = new Pose(126.86, 58.25, Math.toRadians(0));
     
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 500;
@@ -60,7 +60,7 @@ public class RedNearInfinite extends AutoCommandBase {
     public static long TURRET_TIMEOUT_MS = 1000;
     
     // Red: -41.4° (aim left toward red basket at 140, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = -41.4;
+    public static double TURRET_SHOOT_ANGLE_DEG = -40.9;
     
     @Override
     public Pose getStartPose() {
@@ -68,25 +68,27 @@ public class RedNearInfinite extends AutoCommandBase {
     }
     
     /**
-     * Shoot command - waits for turret, triggers boost, then fires.
+     * Shoot command - waits for turret, checks shooter speed, triggers boost, then fires.
      */
     private Command shootAfterTurretReady() {
         return new SequentialCommandGroup(
                 // 1. Wait for turret to reach angle
                 new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
-                // 2. Start firing boost timer
+                // 2. Wait for shooter to reach target speed (like manual mode)
+                new WaitForShooterCommand(shooter, SHOOTER_SPINUP_TIMEOUT_MS),
+                // 3. Start firing boost timer
                 new InstantCommand(() -> shooter.setTransitFiring(true)),
-                // 3. Wait for boost delay (200ms) before opening transit
+                // 4. Wait for boost delay (200ms) before opening transit
                 new WaitCommand(200),
-                // 4. Open transit to release ball (boost now active)
+                // 5. Open transit to release ball (boost now active)
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
-                // 5. Wait for ball to exit
+                // 6. Wait for ball to exit
                 new WaitCommand(TRANSIT_OPEN_MS),
-                // 6. Close transit
+                // 7. Close transit
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
-                // 7. End firing boost
+                // 8. End firing boost
                 new InstantCommand(() -> shooter.setTransitFiring(false)),
-                // 8. Return turret to forward (shooter keeps running)
+                // 9. Return turret to forward (shooter keeps running)
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );
     }
@@ -168,12 +170,11 @@ public class RedNearInfinite extends AutoCommandBase {
                 .build();
         
         return new SequentialCommandGroup(
-                // START: Keep shooter running at SLOW throughout entire auto
-                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
-                
-                // Path 1: Go to shoot + FIRST SHOT (preloaded ball)
+                // Path 1: Go to shoot position first (shooter not running yet)
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path1),
+                // Start shooter AFTER reaching shoot position (same timing as subsequent shots)
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
                 shootAfterTurretReady(),
                 
                 // Path 2-3: Get sample 1

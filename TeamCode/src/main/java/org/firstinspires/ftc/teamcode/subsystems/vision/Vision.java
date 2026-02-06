@@ -265,7 +265,8 @@ public class Vision extends SubsystemBase {
     }
     
     /**
-     * Gets tx (horizontal offset) for goal tags only.
+     * Gets tx (horizontal offset) for goal tags only (20 or 24).
+     * Uses the specific goal tag's TX, not the global result TX.
      * @return tx value or 0 if no goal tag detected.
      */
     public double getTx() {
@@ -274,15 +275,13 @@ public class Vision extends SubsystemBase {
         if (goalTag == null) {
             return 0;
         }
-        LLResult result = limelight.getLatestResult();
-        if (result != null && result.isValid()) {
-            return result.getTx();
-        }
-        return 0;
+        // Use the goal tag's specific TX, not result.getTx() which returns first detected tag
+        return goalTag.getTargetXDegrees();
     }
     
     /**
-     * Gets ty (vertical offset) for goal tags only.
+     * Gets ty (vertical offset) for goal tags only (20 or 24).
+     * Uses the specific goal tag's TY, not the global result TY.
      * @return ty value or 0 if no goal tag detected.
      */
     public double getTy() {
@@ -291,11 +290,8 @@ public class Vision extends SubsystemBase {
         if (goalTag == null) {
             return 0;
         }
-        LLResult result = limelight.getLatestResult();
-        if (result != null && result.isValid()) {
-            return result.getTy();
-        }
-        return 0;
+        // Use the goal tag's specific TY, not result.getTy() which returns first detected tag
+        return goalTag.getTargetYDegrees();
     }
     
     /**

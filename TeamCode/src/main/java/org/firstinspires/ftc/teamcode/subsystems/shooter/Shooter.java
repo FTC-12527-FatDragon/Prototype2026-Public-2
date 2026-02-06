@@ -54,8 +54,8 @@ public class Shooter extends SubsystemBase {
     private static final double FIRING_BOOST_MID_START = 0.27;
     private static final double FIRING_BOOST_MID_END = 0.38;
     // FAST (far shot) linear boost: 25% → 40%
-    private static final double FIRING_BOOST_FAST_START = 0.25;
-    private static final double FIRING_BOOST_FAST_END = 0.40;
+    private static final double FIRING_BOOST_FAST_START = 0.20;
+    private static final double FIRING_BOOST_FAST_END = 0.27;
     private static final long FIRING_BOOST_MAX_DURATION_MS = 1000;  // Max 1 second boost
     private double lockedPower = 0;  // Power locked when boost activates
     private boolean boostActive = false;  // True when using locked power + boost
@@ -67,6 +67,9 @@ public class Shooter extends SubsystemBase {
     private long windowStartTime = 0;
     private double calculatedVelocity = 0;
     private static final long VELOCITY_WINDOW_MS = 50;  // Calculate velocity every 50ms
+    
+    // Fine-tuning PD control variables
+    private double lastError = 0;  // For D term calculation in FAST mode
 
     /**
      * Constructor for Shooter.
@@ -404,9 +407,8 @@ public class Shooter extends SubsystemBase {
             double boostAmount = calculateBoostAmount();
             power = Math.min(1.0, lockedPower + boostAmount);
         } else {
-            // NORMAL MODE: Pseudo closed-loop control
+            // NORMAL MODE: Pseudo closed-loop control with fine-tuning
             double overspeedThreshold = ShooterConstants.motorBrakeThreshold;
-            double deadband = 15000;  // Stability zone: ±15000 TPS around target
             double error = targetVel - currentVel;
             
             // Calculate feedforward with correction factor (motors don't reach theoretical max)
@@ -414,24 +416,47 @@ public class Shooter extends SubsystemBase {
             feedforward = Math.min(feedforward, 0.95);  // Cap at 95%
             
             // Mode-specific parameters
+            boolean isFastMode = (shooterState == ShooterState.FAST);
             boolean isMidMode = (shooterState == ShooterState.MID);
+            
+            // FAST mode needs tighter control (higher speed = more sensitive)
+            double deadband = isFastMode ? 4500 : 8000;  // FAST: ±4500, others: ±8000
+            double kP_fine = isFastMode ? 0.000012 : 0.000008;  // FAST: stronger P, others: normal
+            double kD_fine = isFastMode ? 0.00005 : 0.0;  // FAST: strong D term for damping (increased 100x)
+            
             double approachPower = isMidMode ? 0.7 : 0.85;  // MID uses gentler approach
             // Reduced power for overspeed (no reverse, just lower power to let motor slow naturally)
             double reducedPower = feedforward * 0.7;  // 70% of feedforward when overspeed
+            
+            // Calculate derivative (rate of change of error) for FAST mode damping
+            double errorDerivative = (error - lastError) / 0.02;  // Assume ~20ms loop time
+            lastError = error;
+            
+            // FAST mode: apply D term globally (even outside deadband) to suppress oscillation
+            double globalDTerm = isFastMode ? (errorDerivative * kD_fine) : 0;
             
             if (error > deadband) {
                 // Below target by more than deadband: accelerate
                 if (error > 50000) {
                     power = 1.0;  // Far from target: full power
                 } else {
-                    power = approachPower;  // Close to target: reduced power for smoother approach
+                    power = approachPower + globalDTerm;  // FAST: add D damping even when accelerating
+                    power = Math.max(0.3, Math.min(0.95, power));  // Clamp
                 }
             } else if (error < -overspeedThreshold) {
                 // Overspeed beyond threshold: reduce power (no reverse braking)
-                power = reducedPower;
+                power = reducedPower + globalDTerm;  // FAST: add D damping when overspeed
+                power = Math.max(0, Math.min(0.95, power));  // Clamp
+            } else if (Math.abs(error) <= deadband) {
+                // Within deadband: use feedforward + PD fine control for micro-adjustments
+                double pTerm = error * kP_fine;
+                double dTerm = errorDerivative * kD_fine;  // Damping to reduce oscillation
+                power = feedforward + pTerm + dTerm;
+                power = Math.max(0, Math.min(0.95, power));  // Clamp power
             } else {
-                // Within deadband or slightly over: use feedforward to maintain
-                power = feedforward;
+                // Slightly overspeed but within threshold: use feedforward
+                power = feedforward + globalDTerm;  // FAST: add D damping
+                power = Math.max(0, Math.min(0.95, power));  // Clamp
             }
             
             // Check if boost should activate (0.2s after firing starts, only when LT + bumper held)

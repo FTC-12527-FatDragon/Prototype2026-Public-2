@@ -33,13 +33,13 @@ public class RedNearAuto2 extends AutoCommandBase {
     // Key positions (Red side - mirrored at x=72)
     // Mirror formula: new_x = 144 - old_x, heading 180° → 0°
     private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(36.5));   // 144 - 25.68, mirrored angle
-    private static final Pose SHOOT_POSE = new Pose(94.77, 96.63, Math.toRadians(0));       // 144 - 49.23
+    private static final Pose SHOOT_POSE = new Pose(96.87, 99.21, Math.toRadians(0));       // 144 - 49.23
     
     // New path positions (mirrored)
-    private static final Pose SAMPLE1_POSE = new Pose(135.21, 59.30, Math.toRadians(0));     // 144 - 8.79
+    private static final Pose SAMPLE1_POSE = new Pose(131.98, 58, Math.toRadians(0));     // 144 - 8.79
     private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);                          // 144 - 67.62
     
-    private static final Pose INTAKE1_POSE = new Pose(127.55, 69.66, Math.toRadians(0));     // 144 - 16.45
+    private static final Pose INTAKE1_POSE = new Pose(126.74, 69.66, Math.toRadians(0));     // 144 - 16.45
     private static final Pose INTAKE1_CTRL = new Pose(117.11, 61.55);                         // 144 - 26.89
     
     private static final Pose INTAKE2_POSE = new Pose(127.83, 83.46, Math.toRadians(0));     // 144 - 16.17
@@ -53,7 +53,7 @@ public class RedNearAuto2 extends AutoCommandBase {
     private static final Pose RN_SAMPLE2_CTRL1 = new Pose(80.38, 43.59);                      // 144 - 63.62
     private static final Pose RN_SAMPLE2_CTRL2 = new Pose(73.67, 33.14);                      // 144 - 70.33
     
-    private static final Pose RN_FINAL_POSE = new Pose(128.04, 101.11, Math.toRadians(0));   // 144 - 15.96
+    private static final Pose RN_FINAL_POSE = new Pose(126.86, 58.25, Math.toRadians(0));   // 144 - 15.96
     
     // Wait times (ms)
     public static long INTAKE_WAIT_MS = 500;
@@ -63,7 +63,7 @@ public class RedNearAuto2 extends AutoCommandBase {
     
     // Turret angle when at SHOOT_POSE
     // Red: -41.4° (aim left toward red basket at 140, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = -41.4;
+    public static double TURRET_SHOOT_ANGLE_DEG = -40.9;
     
     @Override
     public Pose getStartPose() {
@@ -71,26 +71,28 @@ public class RedNearAuto2 extends AutoCommandBase {
     }
     
     /**
-     * Shoot command - waits for turret, triggers boost, then fires.
+     * Shoot command - waits for turret, checks shooter speed, triggers boost, then fires.
      */
     private Command shootCommand() {
         return new SequentialCommandGroup(
                 // 1. Set turret angle and wait for it to reach
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new WaitCommand(TURRET_SETTLE_MS),
-                // 2. Start firing boost timer
+                // 2. Wait for shooter to reach target speed (like manual mode)
+                new WaitForShooterCommand(shooter, SHOOTER_SPINUP_TIMEOUT_MS),
+                // 3. Start firing boost timer
                 new InstantCommand(() -> shooter.setTransitFiring(true)),
-                // 3. Wait for boost delay (200ms) before opening transit
+                // 4. Wait for boost delay (200ms) before opening transit
                 new WaitCommand(200),
-                // 4. Open transit to release ball (boost now active)
+                // 5. Open transit to release ball (boost now active)
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
-                // 5. Wait for ball to exit
+                // 6. Wait for ball to exit
                 new WaitCommand(TRANSIT_OPEN_MS),
-                // 6. Close transit
+                // 7. Close transit
                 new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
-                // 7. End firing boost
+                // 8. End firing boost
                 new InstantCommand(() -> shooter.setTransitFiring(false)),
-                // 8. Return turret to forward (shooter keeps running)
+                // 9. Return turret to forward (shooter keeps running)
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );
     }
@@ -177,13 +179,12 @@ public class RedNearAuto2 extends AutoCommandBase {
         
         // Build command sequence
         return new SequentialCommandGroup(
-                // START: Keep shooter running at SLOW throughout entire auto
-                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
-                
                 // === NEW SEQUENCE ===
-                // Path 1: Go to shoot + FIRST SHOT (preloaded ball)
+                // Path 1: Go to shoot position first (shooter not running yet)
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path1),
+                // Start shooter AFTER reaching shoot position (same timing as subsequent shots)
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
                 shootCommand(),
                 
                 // Path 2-3: Get sample 1

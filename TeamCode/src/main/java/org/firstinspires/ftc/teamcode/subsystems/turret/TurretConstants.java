@@ -35,9 +35,9 @@ public class TurretConstants {
     
     // Angle limits (degrees, 0 = forward)
     // Positive = clockwise (right), Negative = counterclockwise (left)
-    // Physical limits: -145° (left), +240° (right)
+    // Physical limits: -145° (left), +226.2° (right)
     public static double minAngleDeg = -145.0;   // Minimum angle (left limit)
-    public static double maxAngleDeg = 240.0;    // Maximum angle (right limit)
+    public static double maxAngleDeg = 226.2;    // Maximum angle (right limit)
     
     // Unwind threshold: if |target angle| >= this, turret will flip 180° to the other side
     // This prevents the turret from hitting physical limits when target is behind robot

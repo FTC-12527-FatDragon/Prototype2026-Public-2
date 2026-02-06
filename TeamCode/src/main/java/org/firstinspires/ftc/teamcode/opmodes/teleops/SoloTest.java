@@ -16,7 +16,7 @@ package org.firstinspires.ftc.teamcode.opmodes.teleops;
  * Target: RED goal (tag 24 basket at 140, 140)
  */
 
-import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.FtcDashboard; 
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
@@ -61,12 +61,17 @@ public class SoloTest extends CommandOpMode {
     
     // Software limits
     private static final double MIN_TURRET_ANGLE = -145.0;
-    private static final double MAX_TURRET_ANGLE = 240.0;
+    private static final double MAX_TURRET_ANGLE = 226.2;
     private static final double FLIP_THRESHOLD = 185.0;
     
     // Flip state
     private boolean isFlipping = false;
     private double flipTargetAngle = 0;
+    
+    // Cached position values (used by turret algorithm, telemetry, and dashboard)
+    private double cachedRobotX = 0;
+    private double cachedRobotY = 0;
+    private double cachedHeadingDeg = 0;
 
     @Override
     public void initialize() {
@@ -114,6 +119,13 @@ public class SoloTest extends CommandOpMode {
         
         // ========== UPDATE ABSOLUTE POSITION ==========
         updateAbsolutePosition();
+        
+        // ========== CACHE POSITION VALUES (used everywhere) ==========
+        if (hasValidPosition) {
+            cachedRobotX = robot.drive.getAbsoluteX();
+            cachedRobotY = robot.drive.getAbsoluteY();
+            cachedHeadingDeg = Math.toDegrees(robot.drive.getAbsoluteHeading());
+        }
         
         // ========== A BUTTON STATE MACHINE ==========
         boolean aButton = gamepadEx1.getButton(GamepadKeys.Button.A);
@@ -168,15 +180,16 @@ public class SoloTest extends CommandOpMode {
         org.firstinspires.ftc.teamcode.utils.DashboardUtil.drawRobot(packet, robot.drive.getPose());
         
         // Draw absolute position if available (green circle + line for heading)
+        // Uses cached values (same as turret algorithm)
         if (hasValidPosition) {
-            double absX = robot.drive.getAbsoluteX();
-            double absY = robot.drive.getAbsoluteY();
-            double absHeading = robot.drive.getAbsoluteHeading();
+            double absX = cachedRobotX;
+            double absY = cachedRobotY;
+            double absHeadingRad = Math.toRadians(cachedHeadingDeg);
             
             // Add to packet telemetry
             packet.put("Abs X", String.format("%.1f", absX));
             packet.put("Abs Y", String.format("%.1f", absY));
-            packet.put("Abs Heading", String.format("%.1f°", Math.toDegrees(absHeading)));
+            packet.put("Abs Heading", String.format("%.1f°", cachedHeadingDeg));
             
             // Draw green circle at absolute position
             packet.fieldOverlay()
@@ -186,8 +199,8 @@ public class SoloTest extends CommandOpMode {
             
             // Draw heading line
             double lineLen = 8;
-            double endX = absX + lineLen * Math.cos(absHeading);
-            double endY = absY + lineLen * Math.sin(absHeading);
+            double endX = absX + lineLen * Math.cos(absHeadingRad);
+            double endY = absY + lineLen * Math.sin(absHeadingRad);
             packet.fieldOverlay()
                     .setStroke("#00FF00")
                     .strokeLine(absX, absY, endX, endY);
@@ -251,13 +264,12 @@ public class SoloTest extends CommandOpMode {
     private void calculateAndApplyTurretAngle() {
         if (!hasValidPosition || robot.turret == null) return;
         
-        // === STEP 1: Get chassis heading and position ===
-        double robotX = robot.drive.getAbsoluteX();
-        double robotY = robot.drive.getAbsoluteY();
+        // === STEP 1: Use cached position (already updated this loop) ===
+        double robotX = cachedRobotX;
+        double robotY = cachedRobotY;
         
         // Heading in [0, 360)
-        double heading = Math.toDegrees(robot.drive.getAbsoluteHeading());
-        heading = Util.normalizeAngleDegrees0To360(heading);
+        double heading = Util.normalizeAngleDegrees0To360(cachedHeadingDeg);
         
         // === STEP 2: Solve for goal field angle ===
         // tan(x) = (140 - robotY) / (140 - robotX)
@@ -345,12 +357,12 @@ public class SoloTest extends CommandOpMode {
             telemetry.addData("TX", String.format("%.1f°", robot.vision.getTx()));
         }
         
-        // === POSITION ===
+        // === POSITION (cached - same as turret algorithm) ===
         telemetry.addLine("========== POSITION ==========");
         if (hasValidPosition) {
-            telemetry.addData("Abs X", String.format("%.1f in", robot.drive.getAbsoluteX()));
-            telemetry.addData("Abs Y", String.format("%.1f in", robot.drive.getAbsoluteY()));
-            telemetry.addData("Abs Heading", String.format("%.1f°", Math.toDegrees(robot.drive.getAbsoluteHeading())));
+            telemetry.addData("Abs X", String.format("%.1f in", cachedRobotX));
+            telemetry.addData("Abs Y", String.format("%.1f in", cachedRobotY));
+            telemetry.addData("Abs Heading", String.format("%.1f°", cachedHeadingDeg));
         } else {
             telemetry.addLine("Waiting for tag...");
         }
