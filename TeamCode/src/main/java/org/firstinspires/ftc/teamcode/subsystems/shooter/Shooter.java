@@ -319,8 +319,8 @@ public class Shooter extends SubsystemBase {
         }
         
         // Check if current velocity is close to target velocity
-        // FAST mode uses tighter tolerance for better accuracy
-        double epsilon = (shooterState == ShooterState.FAST) ? 12000 : ShooterConstants.shooterEpsilon;
+        // All modes use same tolerance (12000 TPS)
+        double epsilon = ShooterConstants.shooterEpsilon;
         boolean atSetpoint = Util.epsilonEqual(
                 calculatedVelocity,
                 targetVel,

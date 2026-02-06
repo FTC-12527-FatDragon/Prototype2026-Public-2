@@ -14,7 +14,7 @@ public class ShooterConstants {
 
     // Velocity tolerance (TPS) - Used to check if shooter is at target speed
     // For external encoder (8192 CPR)
-    public static double shooterEpsilon = 25000;
+    public static double shooterEpsilon = 12000;
 
     // ==================== PIDF VELOCITY CONTROL (External Encoder) ====================
     // Tuned for REV Through Bore Encoder V2 (8192 CPR) on rightShooterMotor
