@@ -22,6 +22,7 @@ public class TeleOpDriveCommand extends CommandBase {
     private final Vision vision;
     private final Turret turret;
     private final GamepadEx gamepadEx;
+    private final GamepadEx gamepadEx2;  // Secondary gamepad for rumble feedback
     private final boolean[] isAuto;
     
     // Trigger threshold for shoot buttons
@@ -38,19 +39,26 @@ public class TeleOpDriveCommand extends CommandBase {
     private boolean headingCaptured = false;    // Has target heading been captured?
 
     public TeleOpDriveCommand(MecanumDrivePinpoint drive, Vision vision, Turret turret,
-                              GamepadEx gamepadEx, boolean[] isAuto) {
+                              GamepadEx gamepadEx, GamepadEx gamepadEx2, boolean[] isAuto) {
         this.drive = drive;
         this.vision = vision;
         this.turret = turret;
         this.gamepadEx = gamepadEx;
+        this.gamepadEx2 = gamepadEx2;
         this.isAuto = isAuto;
         addRequirements(drive);
+    }
+    
+    // Constructor without gamepad2 (backward compatibility)
+    public TeleOpDriveCommand(MecanumDrivePinpoint drive, Vision vision, Turret turret,
+                              GamepadEx gamepadEx, boolean[] isAuto) {
+        this(drive, vision, turret, gamepadEx, null, isAuto);
     }
     
     // Legacy constructor for compatibility
     public TeleOpDriveCommand(MecanumDrivePinpoint drive, Vision vision, GamepadEx gamepadEx, 
                               boolean[] isAuto, java.util.function.BooleanSupplier unused) {
-        this(drive, vision, null, gamepadEx, isAuto);
+        this(drive, vision, null, gamepadEx, null, isAuto);
     }
     
     /**
@@ -134,6 +142,17 @@ public class TeleOpDriveCommand extends CommandBase {
             boolean timeout = (System.currentTimeMillis() - autoAimStartTime) > AUTO_AIM_TIMEOUT_MS;
             boolean reachedTarget = headingCaptured && drive.isAtTargetHeading(targetHeadingRad);
             if (autoAimActive && (reachedTarget || manualTurnOverride || timeout || !headingCaptured)) {
+                // Rumble feedback ONLY when auto-aim completes AND TX confirms alignment
+                if (reachedTarget && vision != null) {
+                    int tagId = vision.getDetectedTagId();
+                    boolean isGoalTag = (tagId == Vision.BLUE_GOAL_TAG_ID || tagId == Vision.RED_GOAL_TAG_ID);
+                    if (isGoalTag && Math.abs(vision.getTx()) < 5.0) {
+                        gamepadEx.gamepad.rumble(200);  // Vibrate gamepad1 for 200ms
+                        if (gamepadEx2 != null) {
+                            gamepadEx2.gamepad.rumble(200);  // Vibrate gamepad2 for 200ms
+                        }
+                    }
+                }
                 autoAimActive = false;
                 headingCaptured = false;
             }

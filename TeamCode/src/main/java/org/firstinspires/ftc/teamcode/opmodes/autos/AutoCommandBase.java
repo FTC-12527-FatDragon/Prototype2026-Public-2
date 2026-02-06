@@ -15,7 +15,7 @@ import org.firstinspires.ftc.teamcode.subsystems.intake.Intake;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
 import org.firstinspires.ftc.teamcode.subsystems.turret.Turret;
-// import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;  // DISABLED: Vision not used in auto currently
+import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 
 /**
  * Base class for Autonomous OpModes.
@@ -27,7 +27,7 @@ public abstract class AutoCommandBase extends LinearOpMode {
     protected Transit transit;
     protected Intake intake;
     protected Follower follower;
-    // protected Vision vision;  // DISABLED: Vision not used in auto currently
+    protected Vision vision;
     protected Turret turret;
     
     // Dashboard for drawing robot position
@@ -67,7 +67,7 @@ public abstract class AutoCommandBase extends LinearOpMode {
         shooter = new Shooter(hardwareMap);
         transit = new Transit(hardwareMap);
         intake = new Intake(hardwareMap);
-        // vision = new Vision(hardwareMap);  // DISABLED: Vision not used in auto currently
+        vision = new Vision(hardwareMap);
         turret = new Turret(hardwareMap);
         // NOTE: MecanumDrivePinpoint is NOT initialized here to avoid resetting Pinpoint and conflicting with Follower
     }
@@ -88,9 +88,9 @@ public abstract class AutoCommandBase extends LinearOpMode {
         intake.setFullPower(true);
         intake.startIntake();
         
-        // Start shooter idle at SLOW (close shot) speed for entire auto
-        // This ensures shooter is always spinning and ready to fire
-        shooter.setShooterState(Shooter.ShooterState.SLOW);
+        // Shooter starts at IDLE (STOP state = low idle power)
+        // Each shot sequence will accelerate to SLOW, then return to STOP after firing
+        shooter.setShooterState(Shooter.ShooterState.STOP);
 
         // Main Loop (aligned with Prototype2026-Public)
         while (opModeIsActive() && !isStopRequested()) {

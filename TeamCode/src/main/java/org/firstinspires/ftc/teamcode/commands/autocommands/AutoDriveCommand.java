@@ -14,6 +14,7 @@ public class AutoDriveCommand extends CommandBase {
     private Follower follower;
     private PathChain pathChain;
     private double waitTime;
+    private double maxPower = 1.0;  // Default: full power
     private final ElapsedTime timer;
 
     /**
@@ -44,11 +45,38 @@ public class AutoDriveCommand extends CommandBase {
     }
 
     /**
+     * Constructor for AutoDriveCommand with custom max power and default timeout.
+     *
+     * @param follower The Pedro Pathing Follower instance.
+     * @param pathChain The PathChain to follow.
+     * @param maxPower Maximum motor power (0.0 to 1.0).
+     * @param waitTime Timeout in milliseconds.
+     */
+    public AutoDriveCommand(Follower follower, PathChain pathChain, double maxPower, double waitTime) {
+        this.follower = follower;
+        this.pathChain = pathChain;
+        this.maxPower = maxPower;
+        this.waitTime = waitTime;
+        this.timer = new ElapsedTime();
+    }
+
+    /**
+     * Sets the maximum power for this path.
+     * @param maxPower Maximum motor power (0.0 to 1.0).
+     * @return this command for chaining.
+     */
+    public AutoDriveCommand setMaxPower(double maxPower) {
+        this.maxPower = maxPower;
+        return this;
+    }
+
+    /**
      * Start following the path.
      */
     @Override
     public void initialize() {
         timer.reset();
+        follower.setMaxPower(maxPower);
         follower.followPath(pathChain);
     }
 
@@ -62,10 +90,12 @@ public class AutoDriveCommand extends CommandBase {
 
     /**
      * Stop following when command ends.
+     * Resets max power to 1.0.
      */
     @Override
     public void end(boolean interrupted) {
         follower.breakFollowing();
+        follower.setMaxPower(1.0);  // Reset to full power for next path
     }
 
     /**

@@ -58,11 +58,20 @@ public class Solo extends CommandOpMode {
     private long dpadReleaseTime = 0;
     private static final long TURRET_HOLD_DELAY_MS = 300;  // 0.3 seconds
     
-    // Turret preset buttons edge detection
+    // Turret preset buttons edge detection (gamepad1)
     private boolean lastDpadDown = false;
     private boolean lastXButton = false;
     private boolean lastBButton = false;
     private boolean turretAt180 = false;  // Toggle state for D-pad Down
+    
+    // Gamepad2 D-pad turret preset edge detection
+    private boolean lastG2DpadLeft = false;
+    private boolean lastG2DpadRight = false;
+    private boolean lastG2DpadUp = false;
+    private boolean lastG2DpadDown = false;
+    
+    // Chassis auto-aim rumble feedback
+    private boolean lastAligned = false;  // Track alignment state for edge detection
 
     @Override
     public void initialize() {
@@ -83,7 +92,8 @@ public class Solo extends CommandOpMode {
                 robot.drive,
                 robot.vision,
                 robot.turret,
-                gamepadEx1, 
+                gamepadEx1,
+                gamepadEx2,
                 isAuto
         ));
 
@@ -136,6 +146,40 @@ public class Solo extends CommandOpMode {
         lastShooterDisableCombo = shooterDisableCombo;
         lastTurretDisableCombo = turretDisableCombo;
         
+        // ========== GAMEPAD2 D-PAD TURRET PRESETS ==========
+        // D-pad Left: -45° (left-front)
+        // D-pad Right: +45° (right-front)
+        // D-pad Up: 0° (forward)
+        // D-pad Down: 180° (backward)
+        if (robot.turret != null) {
+            boolean g2Left = gamepadEx2.getButton(GamepadKeys.Button.DPAD_LEFT);
+            boolean g2Right = gamepadEx2.getButton(GamepadKeys.Button.DPAD_RIGHT);
+            boolean g2Up = gamepadEx2.getButton(GamepadKeys.Button.DPAD_UP);
+            boolean g2Down = gamepadEx2.getButton(GamepadKeys.Button.DPAD_DOWN);
+            
+            if (g2Left && !lastG2DpadLeft) {
+                robot.turret.releaseHold();
+                robot.turret.enableSoftLock(-45);
+            }
+            if (g2Right && !lastG2DpadRight) {
+                robot.turret.releaseHold();
+                robot.turret.enableSoftLock(45);
+            }
+            if (g2Up && !lastG2DpadUp) {
+                robot.turret.releaseHold();
+                robot.turret.enableSoftLock(0);
+            }
+            if (g2Down && !lastG2DpadDown) {
+                robot.turret.releaseHold();
+                robot.turret.enableSoftLock(180);
+            }
+            
+            lastG2DpadLeft = g2Left;
+            lastG2DpadRight = g2Right;
+            lastG2DpadUp = g2Up;
+            lastG2DpadDown = g2Down;
+        }
+        
         // ========== D-PAD TURRET OPEN-LOOP CONTROL ==========
         // D-Pad Left: Turn left (CCW) at 1.0 power
         // D-Pad Right: Turn right (CW) at 1.0 power
@@ -174,8 +218,8 @@ public class Solo extends CommandOpMode {
             
             // ========== TURRET PRESET POSITIONS ==========
             // D-pad Down: Toggle 0° ↔ 180° (goes right, since left can't reach 180°)
-            // X: Go to -90° (left)
-            // B: Go to +90° (right)
+            // X: Go to -45° (left-front)
+            // B: Go to +45° (right-front)
             boolean dpadDown = gamepadEx1.getButton(GamepadKeys.Button.DPAD_DOWN);
             boolean xButton = gamepadEx1.getButton(GamepadKeys.Button.X);
             boolean bButton = gamepadEx1.getButton(GamepadKeys.Button.B);
@@ -194,17 +238,17 @@ public class Solo extends CommandOpMode {
                 }
             }
             
-            // X button: Go to -90° (left)
+            // X button: Go to -45° (left-front)
             if (xButton && !lastXButton) {
                 robot.turret.releaseHold();
-                robot.turret.enableSoftLock(-90);
+                robot.turret.enableSoftLock(-45);
                 turretAt180 = false;  // Reset toggle state
             }
             
-            // B button: Go to +90° (right)
+            // B button: Go to +45° (right-front)
             if (bButton && !lastBButton) {
                 robot.turret.releaseHold();
-                robot.turret.enableSoftLock(90);
+                robot.turret.enableSoftLock(45);
                 turretAt180 = false;  // Reset toggle state
             }
             
@@ -277,7 +321,7 @@ public class Solo extends CommandOpMode {
             telemetry.addData("Angle", String.format("%.1f°", robot.turret.getAngleDegrees()));
             telemetry.addData("Target", String.format("%.1f°", robot.turret.getTargetAngle()));
             telemetry.addData("Mode", robot.turret.getLockMode());
-            telemetry.addLine("←→=Manual | ↓=0/180 | X=-90 | B=+90");
+            telemetry.addLine("←→=Manual | ↓=0/180 | X=-45 | B=+45");
         }
         
         // --- Emergency Disable Status (Gamepad2) ---

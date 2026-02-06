@@ -24,7 +24,7 @@ public class Constants {
 
     // Follower Constants: Define mass, limits, and PIDF coefficients for path following
     public static FollowerConstants followerConstants = new FollowerConstants()
-            .mass(13.15) // Robot mass in kg
+            .mass(13.1) // Robot mass in kg
             .forwardZeroPowerAcceleration(DriveConstants.forwardAcceleration)
             .lateralZeroPowerAcceleration(DriveConstants.strafeAcceleration)
             .useSecondaryTranslationalPIDF(false)

@@ -47,9 +47,9 @@ public class Shooter extends SubsystemBase {
     private boolean isFiring = false;
     private static final long FIRING_BOOST_DELAY_MS = 200;  // 0.2 seconds
     private static final long FIRING_BOOST_RAMP_MS = 1000;        // Ramp duration (1 second)
-    // SLOW (close shot) linear boost: 30% → 45%
+    // SLOW (close shot) linear boost: 30% → 32%
     private static final double FIRING_BOOST_SLOW_START = 0.30;
-    private static final double FIRING_BOOST_SLOW_END = 0.45;
+    private static final double FIRING_BOOST_SLOW_END = 0.32;
     // MID linear boost: 27% → 38%
     private static final double FIRING_BOOST_MID_START = 0.27;
     private static final double FIRING_BOOST_MID_END = 0.38;
@@ -294,9 +294,14 @@ public class Shooter extends SubsystemBase {
             boostActive = false;  // Reset boost so it can ramp from start
             lockedPower = 0;
         } else {
-            // If stopped firing, reset boost
+            // Stopped firing: reset ALL firing state
+            // Critical for auto mode where shooterState never goes to STOP between shots.
+            // Without this, isFiring stays true from previous shot, causing
+            // isShooterAtSetPoint() to return true even when speed hasn't recovered.
             boostActive = false;
             lockedPower = 0;
+            isFiring = false;       // Reset so next shot properly waits for speed
+            firingStartTime = 0;
         }
     }
     
@@ -398,7 +403,12 @@ public class Shooter extends SubsystemBase {
         // OPTION 1: PSEUDO CLOSED-LOOP - ACTIVE (Optimized)
         // =================================================================
         if (shooterState == ShooterState.STOP && adaptiveVelocity == 0) {
-            power = ShooterConstants.idlePower;
+            // Check if speed is too high (> idle + 10000 TPS) - apply reverse brake
+            if (currentVel > ShooterConstants.stopVelocity + 10000) {
+                power = -0.3;  // Reverse brake
+            } else {
+                power = ShooterConstants.idlePower;
+            }
             boostActive = false;  // Reset boost when STOP
             lockedPower = 0;
         } else if (boostActive) {
@@ -428,34 +438,41 @@ public class Shooter extends SubsystemBase {
             // Reduced power for overspeed (no reverse, just lower power to let motor slow naturally)
             double reducedPower = feedforward * 0.7;  // 70% of feedforward when overspeed
             
-            // Calculate derivative (rate of change of error) for FAST mode damping
+            // Calculate derivative (rate of change of error) for deadband D term
             double errorDerivative = (error - lastError) / 0.02;  // Assume ~20ms loop time
             lastError = error;
             
-            // FAST mode: apply D term globally (even outside deadband) to suppress oscillation
-            double globalDTerm = isFastMode ? (errorDerivative * kD_fine) : 0;
-            
             if (error > deadband) {
-                // Below target by more than deadband: accelerate
+                // Below target by more than deadband: accelerate with progressive slowdown
+                // Use slightly lower target power to prevent overshoot
+                double targetPower = feedforward - 0.03;  // Aim slightly below feedforward
+                
                 if (error > 50000) {
                     power = 1.0;  // Far from target: full power
+                } else if (error > 40000) {
+                    power = 0.85;  // Getting closer: reduced
+                } else if (error > 20000) {
+                    // Approaching target: gradual power reduction to prevent overshoot
+                    double progress = (40000 - error) / 20000.0;  // 0 at 40k, 1 at 20k
+                    power = 0.85 - (0.85 - targetPower) * progress;  // Smooth transition
                 } else {
-                    power = approachPower + globalDTerm;  // FAST: add D damping even when accelerating
-                    power = Math.max(0.3, Math.min(0.95, power));  // Clamp
+                    // Close to deadband: use lower than feedforward to coast in
+                    power = targetPower;
                 }
+                power = Math.max(0.3, Math.min(0.95, power));  // Clamp
             } else if (error < -overspeedThreshold) {
                 // Overspeed beyond threshold: reduce power (no reverse braking)
-                power = reducedPower + globalDTerm;  // FAST: add D damping when overspeed
+                power = reducedPower;
                 power = Math.max(0, Math.min(0.95, power));  // Clamp
             } else if (Math.abs(error) <= deadband) {
                 // Within deadband: use feedforward + PD fine control for micro-adjustments
                 double pTerm = error * kP_fine;
-                double dTerm = errorDerivative * kD_fine;  // Damping to reduce oscillation
+                double dTerm = errorDerivative * kD_fine;  // D term only in deadband
                 power = feedforward + pTerm + dTerm;
                 power = Math.max(0, Math.min(0.95, power));  // Clamp power
             } else {
                 // Slightly overspeed but within threshold: use feedforward
-                power = feedforward + globalDTerm;  // FAST: add D damping
+                power = feedforward;
                 power = Math.max(0, Math.min(0.95, power));  // Clamp
             }
             

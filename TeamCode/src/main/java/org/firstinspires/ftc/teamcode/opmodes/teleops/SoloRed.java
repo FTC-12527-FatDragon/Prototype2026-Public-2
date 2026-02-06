@@ -125,6 +125,7 @@ public class SoloRed extends CommandOpMode {
                 robot.vision,
                 robot.turret,
                 gamepadEx1,
+                gamepadEx2,
                 isAuto
         ));
 

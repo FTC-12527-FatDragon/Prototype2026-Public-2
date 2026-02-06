@@ -69,7 +69,7 @@ public class TurretConstants {
     public static double kF_deg = 0.0005;  // F for degrees (tuned)
     
     // Position control parameters
-    public static double positionTolerance = 5.0;   // Degrees, within this = at setpoint
+    public static double positionTolerance = 0.2;   // Degrees, within this = at setpoint
     public static double maxOutputPower = 1.0;       // Maximum output from PID
     public static double minOutputPower = 0.0;       // Minimum output
     

@@ -47,8 +47,8 @@ public class ShooterConstants {
     public static double idlePower = 0.27;
     
     public static double stopVelocity = 175000;   // ~600 * 292 (idle reference)
-    public static double fastVelocity = 418000;   // Far shots (远射)
-    public static double midVelocity = 290000;    // Mid-range shots (中射)
+    public static double fastVelocity = 40700;   // Far shots (远射)
+    public static double midVelocity = 280000;    // Mid-range shots (中射)
     public static double slowVelocity = 224000;   // Close shots (近射)
     public static double releaseVelocity = 60000; // Threshold to consider "stopped"
     
@@ -72,7 +72,7 @@ public class ShooterConstants {
     // Servo Positions for Angle Adjustment
     // STOP/MID (0.5), SLOW (0.04), FAST (1.0)
     public static double shooterServoUpPos = 1.0;    // Position for FAST/Long range
-    public static double shooterServoMidPos = 0.5;   // Position for MID range and STOP
+    public static double shooterServoMidPos = 0.54;   // Position for MID range and STOP
     public static double shooterServoDownPos = 0.04; // Position for SLOW/Short range
     
     // ==================== ADAPTIVE SHOOTING ====================

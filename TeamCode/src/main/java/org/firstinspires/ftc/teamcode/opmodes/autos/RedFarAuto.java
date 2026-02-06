@@ -11,8 +11,8 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
+import org.firstinspires.ftc.teamcode.commands.TransitCommand;
 import org.firstinspires.ftc.teamcode.commands.autocommands.AutoDriveCommand;
-import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForShooterCommand;
 import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForTurretCommand;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
@@ -52,14 +52,20 @@ public class RedFarAuto extends AutoCommandBase {
         return START_POSE;
     }
     
+    /**
+     * Shoot command - uses TransitCommand (same as manual TeleOp).
+     * TransitCommand continuously checks shooter speed:
+     * - Opens transit ONLY when shooter is at target velocity
+     * - Closes transit if speed drops
+     * - Manages firing boost automatically
+     */
     private Command shootAfterTurretReady() {
         return new SequentialCommandGroup(
                 new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
                 new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
-                new WaitForShooterCommand(shooter, SHOOTER_SPINUP_TIMEOUT_MS),
-                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
-                new WaitCommand(TRANSIT_OPEN_MS),
-                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
+                // Use TransitCommand (same as manual fire) with timeout
+                new TransitCommand(transit, shooter)
+                        .withTimeout(SHOOTER_SPINUP_TIMEOUT_MS + TRANSIT_OPEN_MS),
                 new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP)),
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );

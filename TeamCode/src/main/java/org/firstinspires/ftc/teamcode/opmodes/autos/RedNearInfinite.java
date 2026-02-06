@@ -11,8 +11,8 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 
+import org.firstinspires.ftc.teamcode.commands.TransitCommand;
 import org.firstinspires.ftc.teamcode.commands.autocommands.AutoDriveCommand;
-import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForShooterCommand;
 import org.firstinspires.ftc.teamcode.commands.autocommands.WaitForTurretCommand;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
 import org.firstinspires.ftc.teamcode.subsystems.transit.Transit;
@@ -33,34 +33,33 @@ public class RedNearInfinite extends AutoCommandBase {
     
     // Key positions (Red side - mirrored at x=72)
     private static final Pose START_POSE = new Pose(118.32, 127.97, Math.toRadians(36.5));
-    private static final Pose SHOOT_POSE = new Pose(96.87, 99.21, Math.toRadians(0));
+    private static final Pose SHOOT_POSE = new Pose(84.13, 90.57, Math.toRadians(0));
     
-    private static final Pose SAMPLE1_POSE = new Pose(131.98, 58, Math.toRadians(0));
+    private static final Pose SAMPLE1_POSE = new Pose(125, 58, Math.toRadians(0));
     private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);
     
-    private static final Pose INTAKE1_POSE = new Pose(126.74, 69.66, Math.toRadians(0));
+    private static final Pose INTAKE1_POSE = new Pose(125.7, 69.66, Math.toRadians(0));
     private static final Pose INTAKE1_CTRL = new Pose(117.11, 61.55);
     
-    private static final Pose SAMPLE2_POSE = new Pose(131.92, 61.02, Math.toRadians(35));
+    private static final Pose SAMPLE2_POSE = new Pose(126, 61.02, Math.toRadians(35));
     private static final Pose SAMPLE2_CTRL = new Pose(112.11, 62.83);
     
-    private static final Pose RN_INTAKE2_POSE = new Pose(127.83, 83.46, Math.toRadians(0));
+    private static final Pose RN_INTAKE2_POSE = new Pose(126, 83.46, Math.toRadians(0));
     private static final Pose RN_INTAKE2_CTRL = new Pose(97.26, 81.85);
     
-    private static final Pose RN_SAMPLE2_POSE = new Pose(129.81, 35.31, Math.toRadians(0));
+    private static final Pose RN_SAMPLE2_POSE = new Pose(125, 35.31, Math.toRadians(0));
     private static final Pose RN_SAMPLE2_CTRL1 = new Pose(80.38, 43.59);
     private static final Pose RN_SAMPLE2_CTRL2 = new Pose(73.67, 33.14);
     
     private static final Pose RN_FINAL_POSE = new Pose(126.86, 58.25, Math.toRadians(0));
     
     // Wait times (ms)
-    public static long INTAKE_WAIT_MS = 500;
-    public static long SHOOTER_SPINUP_TIMEOUT_MS = 2000;
-    public static long TRANSIT_OPEN_MS = 1500;
+    public static long SHOOTER_SPINUP_TIMEOUT_MS = 1500;
+    public static long TRANSIT_OPEN_MS = 1000;
     public static long TURRET_TIMEOUT_MS = 1000;
     
-    // Red: -41.4° (aim left toward red basket at 140, 140)
-    public static double TURRET_SHOOT_ANGLE_DEG = -40.9;
+    // Red: -44° (aim left toward red basket at 144, 140)
+    public static double TURRET_SHOOT_ANGLE_DEG = -44.3;
     
     @Override
     public Pose getStartPose() {
@@ -68,33 +67,32 @@ public class RedNearInfinite extends AutoCommandBase {
     }
     
     /**
-     * Shoot command - waits for turret, checks shooter speed, triggers boost, then fires.
+     * Shoot command - uses TransitCommand (same as manual TeleOp).
+     * TransitCommand continuously checks shooter speed:
+     * - Opens transit ONLY when shooter is at target velocity
+     * - Closes transit if speed drops
+     * - Manages firing boost automatically
      */
     private Command shootAfterTurretReady() {
         return new SequentialCommandGroup(
-                // 1. Wait for turret to reach angle
-                new WaitForTurretCommand(turret, TURRET_TIMEOUT_MS),
-                // 2. Wait for shooter to reach target speed (like manual mode)
-                new WaitForShooterCommand(shooter, SHOOTER_SPINUP_TIMEOUT_MS),
-                // 3. Start firing boost timer
-                new InstantCommand(() -> shooter.setTransitFiring(true)),
-                // 4. Wait for boost delay (200ms) before opening transit
-                new WaitCommand(200),
-                // 5. Open transit to release ball (boost now active)
-                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.UP)),
-                // 6. Wait for ball to exit
-                new WaitCommand(TRANSIT_OPEN_MS),
-                // 7. Close transit
-                new InstantCommand(() -> transit.setTransitState(Transit.TransitState.DOWN)),
-                // 8. End firing boost
-                new InstantCommand(() -> shooter.setTransitFiring(false)),
-                // 9. Return turret to forward (shooter keeps running)
+                // 0. TX auto-aim: if Limelight sees a goal tag, fine-tune turret angle
+                new InstantCommand(() -> {
+                    if (vision.hasTarget()) {
+                        double tx = vision.getTx();
+                        double correctedAngle = TURRET_SHOOT_ANGLE_DEG + tx;
+                        turret.enableSoftLock(correctedAngle);
+                    }
+                }),
+                new WaitCommand(200),  // Wait for turret to settle on corrected angle
+                // 1. Accelerate shooter from idle to MID
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.MID)),
+                // 2. Use TransitCommand (same as manual fire) with timeout
+                new TransitCommand(transit, shooter)
+                        .withTimeout(SHOOTER_SPINUP_TIMEOUT_MS + TRANSIT_OPEN_MS),
+                // 3. Return shooter to idle and turret to forward
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP)),
                 new InstantCommand(() -> turret.enableSoftLock(0))
         );
-    }
-    
-    private Command intakeWaitCommand() {
-        return new WaitCommand(INTAKE_WAIT_MS);
     }
     
     private PathChain buildPath5() {
@@ -114,7 +112,6 @@ public class RedNearInfinite extends AutoCommandBase {
     private Command sample2CycleCommand() {
         return new SequentialCommandGroup(
                 new AutoDriveCommand(follower, buildPath5()),
-                intakeWaitCommand(),
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, buildPath6()),
                 shootAfterTurretReady()
@@ -173,14 +170,13 @@ public class RedNearInfinite extends AutoCommandBase {
                 // Path 1: Go to shoot position first (shooter not running yet)
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path1),
-                // Start shooter AFTER reaching shoot position (same timing as subsequent shots)
-                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.SLOW)),
+                // Shoot (shootAfterTurretReady handles SLOW→fire→STOP)
                 shootAfterTurretReady(),
                 
                 // Path 2-3: Get sample 1
                 new AutoDriveCommand(follower, path2),
-                new AutoDriveCommand(follower, path3),
-                intakeWaitCommand(),
+                new AutoDriveCommand(follower, path3).setMaxPower(0.8),  // 80% power for gentle intake approach
+                new WaitCommand(700),  // Wait at INTAKE1_POSE for intake
                 
                 // Path 4: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
@@ -193,7 +189,6 @@ public class RedNearInfinite extends AutoCommandBase {
                 sample2CycleCommand(),
                 
                 new AutoDriveCommand(follower, pathRN5),
-                intakeWaitCommand(),
                 
                 // PathRN6: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
@@ -201,7 +196,6 @@ public class RedNearInfinite extends AutoCommandBase {
                 shootAfterTurretReady(),
                 
                 new AutoDriveCommand(follower, pathRN7),
-                intakeWaitCommand(),
                 
                 // PathRN8: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
