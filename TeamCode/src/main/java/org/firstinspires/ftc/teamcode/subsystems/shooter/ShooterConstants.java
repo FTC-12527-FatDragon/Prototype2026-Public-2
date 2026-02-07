@@ -14,7 +14,8 @@ public class ShooterConstants {
 
     // Velocity tolerance (TPS) - Used to check if shooter is at target speed
     // For external encoder (8192 CPR)
-    public static double shooterEpsilon = 12000;
+    public static double shooterEpsilon = 12000;       // SLOW / MID tolerance
+    public static double shooterEpsilonFast = 3000;    // FAST (远射) tolerance
 
     // ==================== PIDF VELOCITY CONTROL (External Encoder) ====================
     // Tuned for REV Through Bore Encoder V2 (8192 CPR) on rightShooterMotor
@@ -47,7 +48,7 @@ public class ShooterConstants {
     public static double idlePower = 0.27;
     
     public static double stopVelocity = 175000;   // ~600 * 292 (idle reference)
-    public static double fastVelocity = 40700;   // Far shots (远射)
+    public static double fastVelocity = 390000;   // Far shots (远射)
     public static double midVelocity = 280000;    // Mid-range shots (中射)
     public static double slowVelocity = 224000;   // Close shots (近射)
     public static double releaseVelocity = 60000; // Threshold to consider "stopped"

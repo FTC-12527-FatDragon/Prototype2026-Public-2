@@ -54,8 +54,8 @@ public class Shooter extends SubsystemBase {
     private static final double FIRING_BOOST_MID_START = 0.27;
     private static final double FIRING_BOOST_MID_END = 0.38;
     // FAST (far shot) linear boost: 25% → 40%
-    private static final double FIRING_BOOST_FAST_START = 0.20;
-    private static final double FIRING_BOOST_FAST_END = 0.27;
+    private static final double FIRING_BOOST_FAST_START = 0.3;
+    private static final double FIRING_BOOST_FAST_END = 0.4;
     private static final long FIRING_BOOST_MAX_DURATION_MS = 1000;  // Max 1 second boost
     private double lockedPower = 0;  // Power locked when boost activates
     private boolean boostActive = false;  // True when using locked power + boost
@@ -324,8 +324,10 @@ public class Shooter extends SubsystemBase {
         }
         
         // Check if current velocity is close to target velocity
-        // All modes use same tolerance (12000 TPS)
-        double epsilon = ShooterConstants.shooterEpsilon;
+        // FAST mode uses tighter tolerance (5000 TPS), others use 12000 TPS
+        double epsilon = (shooterState == ShooterState.FAST)
+                ? ShooterConstants.shooterEpsilonFast
+                : ShooterConstants.shooterEpsilon;
         boolean atSetpoint = Util.epsilonEqual(
                 calculatedVelocity,
                 targetVel,
