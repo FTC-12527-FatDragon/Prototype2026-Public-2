@@ -50,7 +50,7 @@ public class ShooterConstants {
     public static double stopVelocity = 175000;   // ~600 * 292 (idle reference)
     public static double fastVelocity = 385000;   // Far shots (远射)
     public static double midVelocity = 280000;    // Mid-range shots (中射)
-    public static double slowVelocity = 224000;   // Close shots (近射)
+    public static double slowVelocity = 230000;   // Close shots (近射)
     public static double releaseVelocity = 60000; // Threshold to consider "stopped"
     
     // Velocity tolerances for transit engagement (ticks per second)
