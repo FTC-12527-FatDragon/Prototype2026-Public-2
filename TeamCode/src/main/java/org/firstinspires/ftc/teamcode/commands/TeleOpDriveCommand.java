@@ -38,6 +38,9 @@ public class TeleOpDriveCommand extends CommandBase {
     private double targetHeadingRad = 0;        // Target heading to turn to
     private boolean headingCaptured = false;    // Has target heading been captured?
 
+    // External flag: when true, A button chassis auto-aim is disabled (turret handles aiming)
+    private boolean[] turretAimMode = {false};
+    
     public TeleOpDriveCommand(MecanumDrivePinpoint drive, Vision vision, Turret turret,
                               GamepadEx gamepadEx, GamepadEx gamepadEx2, boolean[] isAuto) {
         this.drive = drive;
@@ -47,6 +50,14 @@ public class TeleOpDriveCommand extends CommandBase {
         this.gamepadEx2 = gamepadEx2;
         this.isAuto = isAuto;
         addRequirements(drive);
+    }
+    
+    /**
+     * Sets the turret aim mode flag reference.
+     * When turretAimMode[0] == true, A button chassis auto-aim is disabled.
+     */
+    public void setTurretAimMode(boolean[] turretAimMode) {
+        this.turretAimMode = turretAimMode;
     }
     
     // Constructor without gamepad2 (backward compatibility)
@@ -106,7 +117,8 @@ public class TeleOpDriveCommand extends CommandBase {
             
             // Auto-aim: ONE-SHOT heading control
             // Press A: Read TX once, calculate target heading, then turn to it
-            if (aPressed && !lastAPressed) {
+            // Skip if turret aim mode is active (turret handles aiming in Solo.java)
+            if (!turretAimMode[0] && aPressed && !lastAPressed) {
                 if (autoAimActive) {
                     // Already aiming, cancel it
                     autoAimActive = false;

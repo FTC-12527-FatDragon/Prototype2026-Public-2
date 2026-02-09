@@ -36,13 +36,13 @@ public class BlueNearAuto extends AutoCommandBase {
     private static final Pose SAMPLE1_POSE = new Pose(19, 58, Math.toRadians(180));
     private static final Pose SAMPLE1_CTRL = new Pose(67.62, 56.74);
     
-    private static final Pose INTAKE1_POSE = new Pose(18.3, 69.66, Math.toRadians(180));
+    private static final Pose INTAKE1_POSE = new Pose(13, 69.66, Math.toRadians(180));
     private static final Pose INTAKE1_CTRL = new Pose(26.89, 61.55);
     
     private static final Pose INTAKE2_POSE = new Pose(17, 83.46, Math.toRadians(180));
     private static final Pose INTAKE2_CTRL = new Pose(46.74, 81.85);
     
-    private static final Pose SAMPLE2_POSE = new Pose(17, 35.31, Math.toRadians(180));
+    private static final Pose SAMPLE2_POSE = new Pose(19, 35.31, Math.toRadians(180));
     private static final Pose SAMPLE2_CTRL1 = new Pose(63.62, 43.59);
     private static final Pose SAMPLE2_CTRL2 = new Pose(70.33, 33.14);
     
@@ -159,7 +159,7 @@ public class BlueNearAuto extends AutoCommandBase {
                 
                 // Path 2-3: Get sample 1
                 new AutoDriveCommand(follower, path2),
-                new AutoDriveCommand(follower, path3).setMaxPower(0.8),  // 80% power for gentle intake approach
+                new AutoDriveCommand(follower, path3).setMaxPower(0.8).withTimeout(1300),  // 80% power, 1.3s timeout
                 new WaitCommand(700),  // Wait at INTAKE1_POSE for intake
                 
                 // Path 4: Drive to shoot
@@ -167,16 +167,16 @@ public class BlueNearAuto extends AutoCommandBase {
                 new AutoDriveCommand(follower, path4),
                 shootAfterTurretReady(),
                 
-                // Path 5: Get intake 2
-                new AutoDriveCommand(follower, path5),
+                // Path 5: Get intake 2 (1.3s timeout protection)
+                new AutoDriveCommand(follower, path5).withTimeout(1300),
                 
                 // Path 6: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, path6),
                 shootAfterTurretReady(),
                 
-                // Path 7: Get sample 2
-                new AutoDriveCommand(follower, path7),
+                // Path 7: Get sample 2 (1.3s timeout protection)
+                new AutoDriveCommand(follower, path7).withTimeout(1300),
                 
                 // Path 8: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),

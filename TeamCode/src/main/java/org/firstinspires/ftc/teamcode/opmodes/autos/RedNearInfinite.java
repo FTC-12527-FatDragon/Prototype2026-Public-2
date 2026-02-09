@@ -38,7 +38,7 @@ public class RedNearInfinite extends AutoCommandBase {
     private static final Pose SAMPLE1_POSE = new Pose(125, 58, Math.toRadians(0));
     private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);
     
-    private static final Pose INTAKE1_POSE = new Pose(125.7, 69.66, Math.toRadians(0));
+    private static final Pose INTAKE1_POSE = new Pose(131, 69.66, Math.toRadians(0));
     private static final Pose INTAKE1_CTRL = new Pose(117.11, 61.55);
     
     private static final Pose SAMPLE2_POSE = new Pose(126, 61.02, Math.toRadians(35));
@@ -175,7 +175,7 @@ public class RedNearInfinite extends AutoCommandBase {
                 
                 // Path 2-3: Get sample 1
                 new AutoDriveCommand(follower, path2),
-                new AutoDriveCommand(follower, path3).setMaxPower(0.8),  // 80% power for gentle intake approach
+                new AutoDriveCommand(follower, path3).setMaxPower(0.8).withTimeout(1300),  // 80% power, 1.3s timeout
                 new WaitCommand(700),  // Wait at INTAKE1_POSE for intake
                 
                 // Path 4: Drive to shoot
@@ -188,14 +188,14 @@ public class RedNearInfinite extends AutoCommandBase {
                 sample2CycleCommand(),
                 sample2CycleCommand(),
                 
-                new AutoDriveCommand(follower, pathRN5),
+                new AutoDriveCommand(follower, pathRN5).withTimeout(1300),  // 1.3s timeout
                 
                 // PathRN6: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),
                 new AutoDriveCommand(follower, pathRN6),
                 shootAfterTurretReady(),
                 
-                new AutoDriveCommand(follower, pathRN7),
+                new AutoDriveCommand(follower, pathRN7).withTimeout(1300),  // 1.3s timeout
                 
                 // PathRN8: Drive to shoot
                 new InstantCommand(() -> turret.enableSoftLock(TURRET_SHOOT_ANGLE_DEG)),

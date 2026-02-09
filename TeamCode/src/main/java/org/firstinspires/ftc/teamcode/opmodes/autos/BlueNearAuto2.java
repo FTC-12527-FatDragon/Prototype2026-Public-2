@@ -39,17 +39,17 @@ public class BlueNearAuto2 extends AutoCommandBase {
     private static final Pose SAMPLE1_POSE = new Pose(19, 58, Math.toRadians(180));
     private static final Pose SAMPLE1_CTRL = new Pose(67.62, 56.74);
     
-    private static final Pose INTAKE1_POSE = new Pose(18.3, 69.66, Math.toRadians(180));
+    private static final Pose INTAKE1_POSE = new Pose(13, 69.66, Math.toRadians(180));
     private static final Pose INTAKE1_CTRL = new Pose(26.89, 61.55);
     
     private static final Pose INTAKE2_POSE = new Pose(17, 83.46, Math.toRadians(180));
     private static final Pose INTAKE2_CTRL = new Pose(46.74, 81.85);
     
-    private static final Pose NEW_POS = new Pose(18.3, 69.66, Math.toRadians(180));
+    private static final Pose NEW_POS = new Pose(13, 68.97, Math.toRadians(180));
     private static final Pose NEW_POS_CTRL = new Pose(32.85, 70.64);
     
     // BlueNear continuation positions (mirrored)
-    private static final Pose BN_SAMPLE2_POSE = new Pose(17, 35.31, Math.toRadians(180));
+    private static final Pose BN_SAMPLE2_POSE = new Pose(19, 35.31, Math.toRadians(180));
     private static final Pose BN_SAMPLE2_CTRL1 = new Pose(63.62, 43.59);
     private static final Pose BN_SAMPLE2_CTRL2 = new Pose(70.33, 33.14);
     
@@ -187,18 +187,18 @@ public class BlueNearAuto2 extends AutoCommandBase {
                 
                 // Path 2-3: Get sample 1
                 new AutoDriveCommand(follower, path2),
-                new AutoDriveCommand(follower, path3).setMaxPower(0.8),  // 80% power for gentle intake approach
+                new AutoDriveCommand(follower, path3).setMaxPower(0.8).withTimeout(1300),  // 80% power, 1.3s timeout
                 new WaitCommand(700),  // Wait at INTAKE1_POSE for intake
                 
                 // Path 4: Back to shoot
                 new AutoDriveCommand(follower, path4),
                 shootCommand(),
                 
-                // Path 5: Get intake 2
-                new AutoDriveCommand(follower, path5),
+                // Path 5: Get intake 2 (1.3s timeout protection)
+                new AutoDriveCommand(follower, path5).withTimeout(1300),
                 
-                // Path 6: To new position (80% power for gentle approach)
-                new AutoDriveCommand(follower, path6).setMaxPower(0.8),
+                // Path 6: To new position (80% power, 1.3s timeout)
+                new AutoDriveCommand(follower, path6).setMaxPower(0.8).withTimeout(1300),
                 new WaitCommand(700),  // Wait at NEW_POS for intake
                 
                 // === BLUENEAR CONTINUATION ===
@@ -206,8 +206,8 @@ public class BlueNearAuto2 extends AutoCommandBase {
                 new AutoDriveCommand(follower, pathBN6),
                 shootCommand(),
                 
-                // BN Path 7: Get sample 2
-                new AutoDriveCommand(follower, pathBN7),
+                // BN Path 7: Get sample 2 (1.3s timeout protection)
+                new AutoDriveCommand(follower, pathBN7).withTimeout(1300),
                 
                 // BN Path 8: Back to shoot
                 new AutoDriveCommand(follower, pathBN8),
@@ -221,3 +221,4 @@ public class BlueNearAuto2 extends AutoCommandBase {
 }
 
 // Special thanks to PeterLu for contributions to this code. All code and interpretation rights belong to PeterLu.
+

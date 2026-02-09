@@ -26,6 +26,7 @@ import org.firstinspires.ftc.teamcode.commands.TeleOpDriveCommand;
 import org.firstinspires.ftc.teamcode.utils.FunctionalButton;
 import org.firstinspires.ftc.teamcode.controls.DriverControls;
 import org.firstinspires.ftc.teamcode.subsystems.Robot;
+import org.firstinspires.ftc.teamcode.subsystems.turret.TurretConstants;
 import org.firstinspires.ftc.teamcode.subsystems.vision.Vision;
 
 /**
@@ -72,6 +73,25 @@ public class Solo extends CommandOpMode {
     
     // Chassis auto-aim rumble feedback
     private boolean lastAligned = false;  // Track alignment state for edge detection
+    
+    // ========== TURRET AIM MODE ==========
+    // Right stick button toggles between NORMAL mode and TURRET_AIM mode
+    // NORMAL: A button = chassis auto-aim (turn robot)
+    // TURRET_AIM: A button = turret TX auto-aim (turn turret using Limelight TX)
+    private boolean[] turretAimMode = {false};  // Shared with TeleOpDriveCommand
+    private boolean lastRightStickButton = false;  // Edge detection for right stick button
+    private boolean lastAButtonForTurret = false;  // Edge detection for A button in turret aim mode
+    
+    // Turret aim state machine
+    private enum TurretAimState {
+        IDLE,               // Waiting for A press
+        INERTIAL_TURNING,   // Turret turning to calculated position (no tag visible)
+        TX_CORRECTING       // Tag visible, fine-tuning with TX
+    }
+    private TurretAimState turretAimState = TurretAimState.IDLE;
+    private long turretAimStartTime = 0;
+    private static final long TURRET_AIM_TIMEOUT_MS = 2000;  // 2s timeout for entire aim sequence
+    private int lastSeenGoalTagId = -1;  // Track which goal tag was last seen (20 or 24)
 
     @Override
     public void initialize() {
@@ -88,14 +108,16 @@ public class Solo extends CommandOpMode {
         }
 
         // Default drive command (with turret for soft/hard lock aware auto-aim)
-        robot.drive.setDefaultCommand(new TeleOpDriveCommand(
+        TeleOpDriveCommand driveCommand = new TeleOpDriveCommand(
                 robot.drive,
                 robot.vision,
                 robot.turret,
                 gamepadEx1,
                 gamepadEx2,
                 isAuto
-        ));
+        );
+        driveCommand.setTurretAimMode(turretAimMode);  // Link turret aim mode flag
+        robot.drive.setDefaultCommand(driveCommand);
 
         // Left stick button: Reset heading to 0
         new FunctionalButton(
@@ -145,6 +167,122 @@ public class Solo extends CommandOpMode {
         lastIntakeDisableCombo = intakeDisableCombo;
         lastShooterDisableCombo = shooterDisableCombo;
         lastTurretDisableCombo = turretDisableCombo;
+        
+        // ========== RIGHT STICK: TOGGLE TURRET AIM MODE ==========
+        // NORMAL mode: A = chassis auto-aim (turn robot body)
+        // TURRET_AIM mode: A = turret auto-aim (inertial nav → TX correction)
+        if (robot.turret != null) {
+            boolean rightStickButton = gamepadEx1.getButton(GamepadKeys.Button.RIGHT_STICK_BUTTON);
+            if (rightStickButton && !lastRightStickButton) {
+                turretAimMode[0] = !turretAimMode[0];
+                turretAimState = TurretAimState.IDLE;  // Reset state on mode switch
+                // Rumble to indicate mode switch
+                gamepadEx1.gamepad.rumble(turretAimMode[0] ? 500 : 200);
+                if (gamepadEx2 != null) {
+                    gamepadEx2.gamepad.rumble(turretAimMode[0] ? 500 : 200);
+                }
+            }
+            lastRightStickButton = rightStickButton;
+            
+            // Track which goal tag was last seen (for inertial navigation target)
+            if (robot.vision != null) {
+                int currentTag = robot.vision.getDetectedTagId();
+                if (currentTag == Vision.BLUE_GOAL_TAG_ID || currentTag == Vision.RED_GOAL_TAG_ID) {
+                    lastSeenGoalTagId = currentTag;
+                }
+            }
+            
+            // === TURRET AUTO-AIM STATE MACHINE (only in TURRET_AIM mode) ===
+            // Flow: A pressed → if tag visible: TX correct directly
+            //                  → if no tag but have position: inertial turn → wait for tag → TX correct
+            if (turretAimMode[0]) {
+                boolean aButton = gamepadEx1.getButton(GamepadKeys.Button.A);
+                
+                switch (turretAimState) {
+                    case IDLE:
+                        // Wait for A button press to start aiming
+                        if (aButton && !lastAButtonForTurret) {
+                            boolean hasTag = robot.vision != null && robot.vision.hasTarget();
+                            
+                            if (hasTag) {
+                                // Tag visible: directly TX correct
+                                double tx = robot.vision.getTx();
+                                double currentAngle = robot.turret.getAngleDegrees();
+                                robot.turret.releaseHold();
+                                robot.turret.enableSoftLock(currentAngle + tx);
+                                gamepadEx1.gamepad.rumble(150);
+                                // Done, stay IDLE
+                            } else if (robot.drive.hasAbsolutePosition() && lastSeenGoalTagId != -1) {
+                                // No tag but have position: calculate angle from inertial nav
+                                double goalX, goalY;
+                                if (lastSeenGoalTagId == Vision.BLUE_GOAL_TAG_ID) {
+                                    goalX = TurretConstants.blueGoalX;
+                                    goalY = TurretConstants.blueGoalY;
+                                } else {
+                                    goalX = TurretConstants.redGoalX;
+                                    goalY = TurretConstants.redGoalY;
+                                }
+                                
+                                // Calculate field angle from robot to goal
+                                double robotX = robot.drive.getAbsoluteX();
+                                double robotY = robot.drive.getAbsoluteY();
+                                double robotHeadingDeg = Math.toDegrees(robot.drive.getAbsoluteHeading());
+                                
+                                double dx = goalX - robotX;
+                                double dy = goalY - robotY;
+                                // Field angle: 0° = +X, 90° = +Y (Pedro Pathing convention)
+                                double fieldAngleDeg = Math.toDegrees(Math.atan2(dy, dx));
+                                
+                                // Turret angle = field angle to goal - robot heading
+                                // (turret 0° = robot forward direction)
+                                double turretTargetDeg = fieldAngleDeg - robotHeadingDeg;
+                                // Normalize to [-180, 180]
+                                while (turretTargetDeg > 180) turretTargetDeg -= 360;
+                                while (turretTargetDeg < -180) turretTargetDeg += 360;
+                                
+                                robot.turret.releaseHold();
+                                robot.turret.enableSoftLock(turretTargetDeg);
+                                
+                                turretAimState = TurretAimState.INERTIAL_TURNING;
+                                turretAimStartTime = System.currentTimeMillis();
+                            }
+                            // else: no position, no tag → do nothing
+                        }
+                        break;
+                        
+                    case INERTIAL_TURNING:
+                        // Turret is turning to calculated position
+                        // Wait for: tag to appear (→ TX correct) or timeout
+                        if (robot.vision != null && robot.vision.hasTarget()) {
+                            // Tag appeared! Fine-tune with TX
+                            double tx = robot.vision.getTx();
+                            double currentAngle = robot.turret.getAngleDegrees();
+                            robot.turret.enableSoftLock(currentAngle + tx);
+                            turretAimState = TurretAimState.TX_CORRECTING;
+                            turretAimStartTime = System.currentTimeMillis();
+                        } else if (System.currentTimeMillis() - turretAimStartTime > TURRET_AIM_TIMEOUT_MS) {
+                            // Timeout: tag never appeared, go back to IDLE
+                            turretAimState = TurretAimState.IDLE;
+                            gamepadEx1.gamepad.rumble(100);  // Short rumble = failed
+                        }
+                        break;
+                        
+                    case TX_CORRECTING:
+                        // TX correction applied, wait briefly then done
+                        // Give 300ms for turret to settle, then go IDLE
+                        if (System.currentTimeMillis() - turretAimStartTime > 300) {
+                            turretAimState = TurretAimState.IDLE;
+                            gamepadEx1.gamepad.rumble(150);  // Confirm success
+                        }
+                        break;
+                }
+                
+                lastAButtonForTurret = aButton;
+            } else {
+                lastAButtonForTurret = false;
+                turretAimState = TurretAimState.IDLE;
+            }
+        }
         
         // ========== GAMEPAD2 D-PAD TURRET PRESETS ==========
         // D-pad Left: -45° (left-front)
@@ -258,18 +396,19 @@ public class Solo extends CommandOpMode {
         }
         
         // ========== ABSOLUTE POSITION UPDATE ==========
-        // Update absolute position continuously for chassis auto-aim
+        // Only use vision when turret is at 0° (Limelight facing forward)
+        // Otherwise use odometry dead-reckoning to maintain position
         if (robot.vision != null) {
+            boolean turretAtZero = robot.turret != null && robot.turret.isCalibrated()
+                    && Math.abs(robot.turret.getAngleDegrees()) < 0.4;  // Within ±0.4° of center
             int currentTagId = robot.vision.getDetectedTagId();
             boolean canSeeAnyGoalTag = (currentTagId == Vision.BLUE_GOAL_TAG_ID || currentTagId == Vision.RED_GOAL_TAG_ID);
             
-            if (canSeeAnyGoalTag) {
-                // Use vision to calibrate absolute position (with turret offset)
-                double turretAngle = (robot.turret != null && robot.turret.isCalibrated()) 
-                        ? robot.turret.getAngleRadians() : 0;
-                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, turretAngle);
+            if (canSeeAnyGoalTag && turretAtZero) {
+                // Turret at 0° and tag visible: vision calibration is reliable
+                robot.drive.updateAbsolutePositionFromVisionWithTurret(robot.vision, 0);
             } else {
-                // No tag visible - maintain position using odometry delta
+                // Turret rotated or no tag visible - use odometry delta
                 robot.drive.updateAbsolutePositionFromOdometry();
             }
         }
@@ -300,7 +439,16 @@ public class Solo extends CommandOpMode {
             telemetry.addData("Abs Y", String.format("%.1f in", robot.drive.getAbsoluteY()));
             telemetry.addData("Abs Heading", String.format("%.1f°", Math.toDegrees(robot.drive.getAbsoluteHeading())));
         }
-        telemetry.addLine("A = Chassis Auto-Aim");
+        String aimModeStr = turretAimMode[0] 
+                ? "TURRET [" + turretAimState + "]" 
+                : "CHASSIS (A=turn robot)";
+        telemetry.addData("AIM MODE", aimModeStr);
+        if (turretAimMode[0]) {
+            String goalStr = lastSeenGoalTagId == Vision.BLUE_GOAL_TAG_ID ? "BLUE" 
+                    : lastSeenGoalTagId == Vision.RED_GOAL_TAG_ID ? "RED" : "NONE";
+            telemetry.addData("Target Goal", goalStr);
+        }
+        telemetry.addLine("R-Stick Click = Toggle Aim Mode");
         
         // --- Intake/Shooter Status ---
         boolean shooterAccelerationPressed =

@@ -33,7 +33,7 @@ public class Shooter extends SubsystemBase {
     
     // Current state of the shooter
     public ShooterState shooterState = ShooterState.STOP;
-    
+
     // Emergency disable flag (controlled by gamepad2)
     private boolean disabled = false;
     

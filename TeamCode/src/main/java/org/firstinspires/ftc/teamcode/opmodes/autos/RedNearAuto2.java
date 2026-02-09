@@ -39,17 +39,17 @@ public class RedNearAuto2 extends AutoCommandBase {
     private static final Pose SAMPLE1_POSE = new Pose(125, 58, Math.toRadians(0));     // 144 - 19
     private static final Pose SAMPLE1_CTRL = new Pose(76.38, 56.74);                          // 144 - 67.62
     
-    private static final Pose INTAKE1_POSE = new Pose(125.7, 69.66, Math.toRadians(0));     // 144 - 18.3
+    private static final Pose INTAKE1_POSE = new Pose(131, 69.66, Math.toRadians(0));     // 144 - 13
     private static final Pose INTAKE1_CTRL = new Pose(117.11, 61.55);                         // 144 - 26.89
     
     private static final Pose INTAKE2_POSE = new Pose(127, 83.46, Math.toRadians(0));     // 144 - 17
     private static final Pose INTAKE2_CTRL = new Pose(97.26, 81.85);                          // 144 - 46.74
     
-    private static final Pose NEW_POS = new Pose(125.7, 69.66, Math.toRadians(0));          // 144 - 18.3, same as INTAKE1_POSE
+    private static final Pose NEW_POS = new Pose(131, 68.97, Math.toRadians(0));          // 144 - 13
     private static final Pose NEW_POS_CTRL = new Pose(111.15, 70.64);                         // 144 - 32.85
     
     // RedNear continuation positions (mirrored)
-    private static final Pose RN_SAMPLE2_POSE = new Pose(127, 35.31, Math.toRadians(0));  // 144 - 17
+    private static final Pose RN_SAMPLE2_POSE = new Pose(125, 35.31, Math.toRadians(0));  // 144 - 19
     private static final Pose RN_SAMPLE2_CTRL1 = new Pose(80.38, 43.59);                      // 144 - 63.62
     private static final Pose RN_SAMPLE2_CTRL2 = new Pose(73.67, 33.14);                      // 144 - 70.33
     
@@ -187,18 +187,18 @@ public class RedNearAuto2 extends AutoCommandBase {
                 
                 // Path 2-3: Get sample 1
                 new AutoDriveCommand(follower, path2),
-                new AutoDriveCommand(follower, path3).setMaxPower(0.8),  // 80% power for gentle intake approach
+                new AutoDriveCommand(follower, path3).setMaxPower(0.8).withTimeout(1300),  // 80% power, 1.3s timeout
                 new WaitCommand(700),  // Wait at INTAKE1_POSE for intake
                 
                 // Path 4: Back to shoot
                 new AutoDriveCommand(follower, path4),
                 shootCommand(),
                 
-                // Path 5: Get intake 2
-                new AutoDriveCommand(follower, path5),
+                // Path 5: Get intake 2 (1.3s timeout protection)
+                new AutoDriveCommand(follower, path5).withTimeout(1300),
                 
-                // Path 6: To new position (80% power for gentle approach)
-                new AutoDriveCommand(follower, path6).setMaxPower(0.8),
+                // Path 6: To new position (80% power, 1.3s timeout)
+                new AutoDriveCommand(follower, path6).setMaxPower(0.8).withTimeout(1300),
                 new WaitCommand(700),  // Wait at NEW_POS for intake
                 
                 // === REDNEAR CONTINUATION ===
@@ -206,8 +206,8 @@ public class RedNearAuto2 extends AutoCommandBase {
                 new AutoDriveCommand(follower, pathRN6),
                 shootCommand(),
                 
-                // RN Path 7: Get sample 2
-                new AutoDriveCommand(follower, pathRN7),
+                // RN Path 7: Get sample 2 (1.3s timeout protection)
+                new AutoDriveCommand(follower, pathRN7).withTimeout(1300),
                 
                 // RN Path 8: Back to shoot
                 new AutoDriveCommand(follower, pathRN8),
