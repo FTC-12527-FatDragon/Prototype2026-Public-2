@@ -6,10 +6,14 @@ import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.arcrobotics.ftclib.command.Command;
 import com.arcrobotics.ftclib.command.CommandScheduler;
+import com.arcrobotics.ftclib.command.InstantCommand;
+import com.arcrobotics.ftclib.command.SequentialCommandGroup;
+import com.arcrobotics.ftclib.command.WaitCommand;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 
+import org.firstinspires.ftc.teamcode.commands.TransitCommand;
 import org.firstinspires.ftc.teamcode.subsystems.drive.Constants;
 import org.firstinspires.ftc.teamcode.subsystems.intake.Intake;
 import org.firstinspires.ftc.teamcode.subsystems.shooter.Shooter;
@@ -36,6 +40,11 @@ public abstract class AutoCommandBase extends LinearOpMode {
     // Robot dimensions (inches) for drawing
     private static final double ROBOT_WIDTH = 14.187;
     private static final double ROBOT_LENGTH = 15.748;
+
+    // ── Shared shooting constants ──
+    protected static final long SHOOTER_SPINUP_TIMEOUT_MS = 1500;
+    protected static final long TRANSIT_OPEN_MS = 1000;
+    protected static final long TURRET_SETTLE_MS = 200;
 
     /**
      * Abstract method to define the autonomous command sequence.
@@ -142,6 +151,48 @@ public abstract class AutoCommandBase extends LinearOpMode {
 
         onAutoStopped();
         CommandScheduler.getInstance().reset();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  Shared Shooting Sequence
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Creates a complete shoot command sequence usable by any auto.
+     * <p>
+     * Sequence:
+     * 1. TX auto-aim — if Limelight sees a goal tag, fine-tune turret with TX offset;
+     *    otherwise ensure turret is at the requested base angle.
+     * 2. Wait for turret to settle (200 ms).
+     * 3. Accelerate shooter to the requested state.
+     * 4. Fire via TransitCommand (continuously checks shooter speed).
+     * 5. Return shooter to STOP and turret to 0°.
+     *
+     * @param turretAngleDeg Target turret angle in degrees (sign = alliance).
+     * @param shooterState   Shooter speed to use (MID for near, FAST for far).
+     * @return A self-contained shoot Command.
+     */
+    protected Command createShootSequence(double turretAngleDeg,
+                                          Shooter.ShooterState shooterState) {
+        return new SequentialCommandGroup(
+                // 1. TX auto-aim or fall back to base angle
+                new InstantCommand(() -> {
+                    if (vision != null && vision.hasTarget()) {
+                        turret.enableSoftLock(turretAngleDeg + vision.getTx());
+                    } else {
+                        turret.enableSoftLock(turretAngleDeg);
+                    }
+                }),
+                new WaitCommand(TURRET_SETTLE_MS),
+                // 2. Accelerate shooter
+                new InstantCommand(() -> shooter.setShooterState(shooterState)),
+                // 3. Fire (TransitCommand checks speed continuously)
+                new TransitCommand(transit, shooter)
+                        .withTimeout(SHOOTER_SPINUP_TIMEOUT_MS + TRANSIT_OPEN_MS),
+                // 4. Clean up
+                new InstantCommand(() -> shooter.setShooterState(Shooter.ShooterState.STOP)),
+                new InstantCommand(() -> turret.enableSoftLock(0))
+        );
     }
 
     /**
